@@ -63,6 +63,25 @@ When fixing a bug:
   (`bash tools/check.sh <project>/index.html --expect canvas`); do not add
   Playwright as a dependency of a project — see `tools/README.md`
 
+## Finishing a task
+
+When a task is finished, commit the work and push it — do not stop after editing
+the files.
+
+- Append one line to `log.md` (date and time, model name, what you did), then
+  commit and push. One push per completed task, not one per file.
+- Verify first: the project's `node test.js`, and `bash tools/check.sh
+  <project>/index.html` for anything browser-facing. Do not push unchecked work;
+  if a check could not run, say so plainly.
+- Push to `origin` on `main` (`thijnperd/AI_test_portfolio`). This repository is
+  **public**, so anything pushed is world-readable and effectively permanent:
+  check that no secrets, credentials, personal data, or ignored data files (for
+  example `*.xlsm`) are staged, and never `git add -f` an ignored file.
+- Confirm the push actually landed, and never force-push or rewrite published
+  history. If the push fails, report it plainly rather than claiming success.
+- Skip the push only when the user asks you not to, or when the session was
+  read-only and produced nothing to commit.
+
 ## Final behavior
 
 If the task is to create a new project, include a clear project folder name, a README, and keep the work isolated. If the task is to edit an existing file, stay inside the right project and follow that project's local conventions before inventing new ones.

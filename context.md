@@ -3,7 +3,9 @@
 This file indexes durable project context and specialized guidance that an AI
 assistant should read before coding when it applies to the task. Start with
 [`ai_startup_instructions.md`](ai_startup_instructions.md), then use this index
-to find the additional files relevant to the project and work area.
+to find the additional files relevant to the project and work area. That file
+also carries the end-of-task duties: append your `log.md` line, then commit the
+finished work and push it to `origin main`.
 
 ## How to use this index
 
@@ -20,7 +22,7 @@ Paths in this index are relative to the repository root.
 
 | File | Read before coding when... |
 |---|---|
-| `ai_startup_instructions.md` | Starting any task; includes repository workflow, skill routing, and the user's preference to avoid unnecessary questions and proceed when requests are clear. |
+| `ai_startup_instructions.md` | Starting any task; includes repository workflow, skill routing, the requirement to commit and push finished work to `origin main` (`thijnperd/AI_test_portfolio`), and the user's preference to avoid unnecessary questions and proceed when requests are clear. |
 | `AGENTS.md` | Starting work in this repository with an AI tool that recognizes `AGENTS.md`; it points to the startup instructions and this index. |
 | `.github/copilot-instructions.md` | Starting work in this repository with a tool that reads Copilot repository instructions. |
 | `WhatIsThisFolder.md` | Creating a project or changing repository organization; it describes the repository's purpose and folder conventions. |

@@ -67,6 +67,13 @@ Every AI session appends one line to [log.md](log.md) before it finishes: the
 date and time, the model name, and what it did. The rule is in
 [ai_startup_instructions.md](ai_startup_instructions.md).
 
+This repository is also **published publicly on GitHub** as
+[`thijnperd/AI_test_portfolio`](https://github.com/thijnperd/AI_test_portfolio)
+(`origin`, branch `main`). A finished task is a pushed task: append the `log.md`
+line, then commit and push. Because the repository is public, check what you are
+publishing first — no secrets, credentials, or personal data, and data files
+such as `Wiekentwie/WieKentWie.xlsm` stay local and git-ignored.
+
 Reusable skills live in [`.agents/skills/`](.agents/skills) as
 `<name>/SKILL.md` (Agent Skills format). Skill-aware tools discover them
 automatically and expose each as `/skill:<name>`; otherwise read the matching

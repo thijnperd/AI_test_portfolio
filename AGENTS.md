@@ -96,6 +96,12 @@ Check this catalog on every task. Files live at
 - Before you finish a session, append one entry to [`log.md`](log.md): a single
   line with the date and time, the model name you are running as, and what you
   did. See [`ai_startup_instructions.md`](ai_startup_instructions.md).
+- **A finished task is a pushed task.** Once the `log.md` entry is appended and
+  the work is verified, commit it and `git push` to `origin main`
+  (`thijnperd/AI_test_portfolio`). The repository is public, so confirm nothing
+  private is staged — secrets, credentials, personal data, `*.xlsm` — before
+  pushing, never `git add -f` an ignored file, and never force-push. If the
+  push fails, report that instead of claiming success.
 - For bug fixes, understand the root cause and run the most relevant available
   validation.
 - Keep `context.md` and the instruction files in sync when you add or rename

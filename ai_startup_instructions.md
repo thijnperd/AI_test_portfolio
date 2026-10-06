@@ -26,6 +26,8 @@ When a task starts, do the following in order:
 10. Only then make changes.
 11. When the task is done, append one entry to `log.md` (the
     [model activity log](#model-activity-log) below).
+12. Commit the finished work and push it to the GitHub remote (see
+    [Committing and pushing when a task is done](#committing-and-pushing-when-a-task-is-done)).
 
 ## Files to check in order
 
@@ -279,6 +281,38 @@ backfilling of earlier sessions.
   append a new entry rather than amending history.
 - The log records *who changed what*, across the whole repository. It is not a
   substitute for a project's own README or changelog.
+
+## Committing and pushing when a task is done
+
+When a task is finished, commit the work and push it. Do not leave finished
+work sitting uncommitted, and do not stop after editing the files.
+
+- **Remote and branch.** Push to `origin` — `thijnperd/AI_test_portfolio`
+  (`https://github.com/thijnperd/AI_test_portfolio`) — on branch `main`, which
+  already tracks `origin/main`. A plain `git push` is what is wanted.
+- **Order.** Finish and verify the work, append the `log.md` entry above, then
+  commit and push. One push per completed task, not one per file.
+- **Verify before you push.** Run the checks that cover the change: the
+  project's `node test.js`, and `tools/check.sh` for anything browser-facing.
+  Do not push unchecked work. If a check could not run, say so plainly instead
+  of implying it passed.
+- **Check what you are publishing.** This repository is public, so anything
+  pushed is world-readable and effectively permanent. Confirm you are not
+  adding secrets, credentials, or personal data, and that files which must stay
+  local are covered by `.gitignore` (for example `*.xlsm` — see
+  `Wiekentwie/(ai instructions).md`). Never `git add -f` an ignored data file.
+- **Confirm the push landed.** Work is not done until it is on the remote: check
+  the command's exit status, or compare `git rev-parse HEAD` with
+  `git ls-remote origin refs/heads/main`.
+- **Report failures honestly.** If the push fails — authentication, a rejected
+  non-fast-forward, no network — fix it, or say plainly that it failed. Never
+  describe a failed or skipped push as done.
+- **Do not rewrite published history.** No `git push --force`, no history
+  rewriting, and no pushing to another remote or branch, unless the user asks
+  for it explicitly.
+- **Skip the push only when told to.** Leave the work uncommitted when the user
+  asks you not to push, or when the session was read-only (inspection, review,
+  explanation) and produced no changes to commit.
 
 ## Summary
 
