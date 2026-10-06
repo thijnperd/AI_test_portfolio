@@ -18,3 +18,4 @@ The full rule lives in
 ---
 
 - 2026-10-06 22:16 — DeepSeek V4.1 Flash — Added the `fluid dynamics` and `wave function collapse` projects and the `differential-growth` and `sandpile` sketches, plus the laptop performance rule and this model activity log.
+- 2026-10-06 22:31 — DeepSeek V4.1 Flash — Published this workspace to GitHub as the public `thijnperd/AI_test_portfolio` repository, rewriting history to keep the git-ignored Wiekentwie workbook and its contact data local.
