@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game of Life</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Game <span>of</span> Life</h1>
+    <p class="muted intro">Conway's Game of Life — a zero-player cellular automaton.</p>
+
+    <h2 class="small">Simulation</h2>
+    <div class="buttons">
+      <button id="play" class="btn btn-primary">Pause</button>
+      <button id="step" class="btn">Step</button>
+      <button id="random" class="btn">Random</button>
+      <button id="clear" class="btn">Clear</button>
+    </div>
+
+    <h2 class="small">Settings</h2>
+    <label class="field">
+      <span>Speed <em id="speed-value">10</em> gen/s</span>
+      <input type="range" id="speed" min="1" max="60" step="1" value="10" />
+    </label>
+    <label class="field">
+      <span>Cell size <em id="cell-size-value">12</em> px</span>
+      <input type="range" id="cell-size" min="4" max="32" step="1" value="12" />
+    </label>
+    <label class="field">
+      <span>Random density <em id="density-value">25%</em></span>
+      <input type="range" id="density" min="5" max="60" step="1" value="25" />
+    </label>
+    <label class="check"><input type="checkbox" id="wrap" checked /> Wrap edges (torus)</label>
+    <label class="check"><input type="checkbox" id="show-grid" checked /> Show grid</label>
+
+    <h2 class="small">Tool</h2>
+    <label class="field">
+      <span>Click to</span>
+      <select id="pattern"></select>
+    </label>
+
+    <p class="muted hint">
+      Left-drag paints cells, right-drag (or Shift) erases. With a pattern
+      selected, click to stamp it.<br /><br />
+      Keys: <b>Space</b> play/pause · <b>S</b> step · <b>R</b> random ·
+      <b>C</b> clear · <b>G</b> grid
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Generation <b id="generation">0</b></span>
+      <span>Population <b id="population">0</b></span>
+      <span>Status <b id="status">Paused</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="life.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

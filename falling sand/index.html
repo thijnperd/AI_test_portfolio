@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Falling Sand — Particle Sandbox</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Falling <span>Sand</span></h1>
+    <p class="muted intro">A tiny material sandbox: sand piles, water flows, walls hold.</p>
+
+    <h2 class="small">Simulation</h2>
+    <div class="buttons">
+      <button id="pause" class="btn btn-primary">Pause</button>
+      <button id="step" class="btn">Step</button>
+      <button id="randomize" class="btn">Randomize</button>
+      <button id="clear" class="btn">Clear</button>
+    </div>
+
+    <h2 class="small">Brush</h2>
+    <label class="field">
+      <span>Material</span>
+      <select id="material">
+        <option value="sand" selected>Sand</option>
+        <option value="water">Water</option>
+        <option value="oil">Oil</option>
+        <option value="wall">Stone</option>
+        <option value="erase">Erase</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Size <em id="brush-value">3</em></span>
+      <input type="range" id="brush" min="1" max="14" step="1" value="3" />
+    </label>
+
+    <h2 class="small">World</h2>
+    <label class="field">
+      <span>Speed <em id="speed-value">1</em>× per frame</span>
+      <input type="range" id="speed" min="1" max="6" step="1" value="1" />
+    </label>
+    <label class="check"><input type="checkbox" id="rain" /> Rain sand from the top</label>
+
+    <p class="muted hint">
+      Click and drag on the canvas to paint with the selected material. Sand is
+      heavy and sinks through water and oil; oil is light and floats. Liquids
+      level out, and the <b>Pressure</b> readout is the deepest liquid column.
+      Wet sand holds a steeper pile.<br /><br />
+      Keys: <b>Space</b> play/pause · <b>C</b> clear
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Sand <b id="stat-sand">—</b></span>
+      <span>Water <b id="stat-water">—</b></span>
+      <span>Oil <b id="stat-oil">—</b></span>
+      <span>Pressure <b id="stat-pressure">—</b></span>
+      <span>Status <b id="stat-status">Running</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="sand.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

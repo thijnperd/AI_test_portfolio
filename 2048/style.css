@@ -1,0 +1,327 @@
+:root {
+  --bg: #0e0f13;
+  --panel: #15171d;
+  --panel-2: #1b1e26;
+  --line: #262a34;
+  --text: #e8eaf0;
+  --muted: #8b91a3;
+  --accent: #7aa2ff;
+  --radius: 8px;
+  --font: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* The `hidden` attribute must beat the layout `display` rules below. The UA
+   stylesheet's `[hidden] { display: none }` loses to any author rule, so
+   `.overlay { display: flex }` kept the game-over screen on top of the board
+   forever — `overlay.hidden = true` set the property and changed nothing. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--font);
+  overflow: hidden;
+}
+
+/* ---------- panel ---------- */
+
+.panel {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+
+.brand {
+  margin: 0 0 8px;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.intro { margin: 0 0 22px; }
+
+.muted { color: var(--muted); }
+
+.hint {
+  margin-top: 22px;
+  line-height: 1.8;
+}
+
+.status-line b { color: var(--text); }
+
+/* ---------- scores ---------- */
+
+.scores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.score-box {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.score-box span {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.score-box b {
+  font-size: 20px;
+  color: var(--text);
+}
+
+/* ---------- the ladder ---------- */
+
+.ladder {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.ladder-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.ladder-next {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.milestones {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.rung {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-left: 2px solid #2c313d;
+  border-radius: 4px;
+  color: var(--muted);
+  background: #12141a;
+}
+
+.rung-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+.rung-value { font-size: 13px; }
+
+/* reached in this run */
+.rung.done {
+  color: #0b0c10;
+  background: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.rung.done .rung-label { opacity: 0.75; }
+
+/* reached in an earlier run — a record to beat rather than a target */
+.rung.ever {
+  color: #cfd6e6;
+  background: #1d2330;
+  border-left-color: #4a5c8a;
+}
+
+/* the rung you are currently climbing */
+.rung.next {
+  color: var(--text);
+  border-color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.rung.pop { animation: rungpop 0.5s ease-out; }
+
+@keyframes rungpop {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(5px); }
+  100% { transform: translateX(0); }
+}
+
+.ladder-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  min-height: 2.6em;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover { border-color: var(--accent); }
+
+.btn-primary {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0c10;
+  font-weight: 700;
+}
+
+.btn-primary:hover { filter: brightness(1.1); }
+
+/* ---------- stage / board ---------- */
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 24px;
+}
+
+.board-wrap {
+  position: relative;
+  width: min(70vh, 100%);
+  aspect-ratio: 1 / 1;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: clamp(14px, 4.4vh, 30px);
+  font-weight: 700;
+  user-select: none;
+}
+
+/* value colours, from quiet grey through to warm gold */
+.tile.v2    { background: #31384a; color: #e8eaf0; }
+.tile.v4    { background: #3d4763; color: #e8eaf0; }
+.tile.v8    { background: #4a5c8a; color: #f4f6fb; }
+.tile.v16   { background: #5872b3; color: #0b0c10; }
+.tile.v32   { background: #6b8fd6; color: #0b0c10; }
+.tile.v64   { background: #7aa2ff; color: #0b0c10; }
+.tile.v128  { background: #8fb4ff; color: #0b0c10; }
+.tile.v256  { background: #a6c2ff; color: #0b0c10; }
+.tile.v512  { background: #b7a6ff; color: #0b0c10; }
+.tile.v1024 { background: #c9a6ff; color: #0b0c10; }
+.tile.v2048 { background: #ffcf7a; color: #0b0c10; }
+.tile.v4096 { background: #ffb35c; color: #0b0c10; }
+.tile.v8192 { background: #ff8f6b; color: #0b0c10; }
+
+@keyframes pop {
+  0% { transform: scale(0.82); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.tile.spawn { animation: pop 0.16s ease-out; }
+.tile.merge { animation: pop 0.22s ease-out; }
+
+/* ---------- overlay ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(11, 12, 16, 0.82);
+  border-radius: 12px;
+}
+
+.overlay p {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+  text-align: center;
+}
+
+.overlay-sub {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+  max-width: 260px;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.overlay .btn { width: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile.spawn,
+  .tile.merge,
+  .rung.pop { animation: none; }
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 720px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .panel {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 45vh;
+  }
+}

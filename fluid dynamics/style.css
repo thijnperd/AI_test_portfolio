@@ -1,0 +1,205 @@
+/* fluid dynamics — "instrument panel, lit smoke"
+   The same room as the sibling projects: a dark instrument panel where the
+   simulation is the hero. Near-black ground, one cool accent, hairline
+   borders, mono type. The dye reads as recessed glass in a deeper well. */
+
+:root {
+  --bg: #0e0f13;
+  --panel: #15171d;
+  --panel-2: #1b1e26;
+  --line: #262a34;
+  --text: #e8eaf0;
+  --muted: #8b91a3;
+  --accent: #7aa2ff;
+  --radius: 8px;
+  --font: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--font);
+  overflow: hidden;
+}
+
+/* ---------- panel ---------- */
+
+.panel {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+
+.brand {
+  margin: 0 0 8px;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+}
+
+.brand span { color: var(--accent); }
+
+.intro { margin: 0 0 22px; }
+
+.small {
+  margin: 22px 0 10px;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.muted { color: var(--muted); }
+
+.hint {
+  margin-top: 24px;
+  line-height: 1.8;
+}
+
+/* ---------- buttons ---------- */
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover { border-color: var(--accent); }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0c10;
+  font-weight: 700;
+  grid-column: 1 / -1;
+}
+
+.btn-primary:hover { filter: brightness(1.1); }
+
+.btn:focus-visible,
+.btn-primary:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- fields ---------- */
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.field em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.field select {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.check input { accent-color: var(--accent); }
+
+/* ---------- stage ---------- */
+
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 12px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.statusbar b {
+  color: var(--text);
+  margin-left: 6px;
+}
+
+.canvas-wrap {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b0c10;
+}
+
+#canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 720px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .panel {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 45vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+}

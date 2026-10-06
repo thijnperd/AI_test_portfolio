@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maze Generator &amp; Solver</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Maze <span>Generator</span><br />&amp; Solver</h1>
+    <p class="muted intro">Animated maze construction and pathfinding.</p>
+
+    <h2 class="small">Build</h2>
+    <div class="buttons">
+      <button id="new-maze" class="btn btn-primary">New maze</button>
+      <button id="build" class="btn">Build</button>
+      <button id="pause" class="btn">Pause</button>
+      <button id="skip" class="btn">Skip</button>
+    </div>
+
+    <h2 class="small">Settings</h2>
+    <label class="field">
+      <span>Generator</span>
+      <select id="generator"></select>
+    </label>
+    <label class="field">
+      <span>Solver</span>
+      <select id="solver"></select>
+    </label>
+    <label class="field">
+      <span>Seed</span>
+      <input type="number" id="seed" value="20261002" min="0" max="4294967295" />
+    </label>
+    <label class="field">
+      <span>Cell size <em id="cell-size-value">16</em> px</span>
+      <input type="range" id="cell-size" min="6" max="32" step="1" value="16" />
+    </label>
+    <label class="field">
+      <span>Speed <em id="speed-value">300</em> steps/s</span>
+      <input type="range" id="speed" min="10" max="2000" step="10" value="300" />
+    </label>
+    <label class="check"><input type="checkbox" id="show-solution" checked /> Show solution</label>
+
+    <p class="muted hint">
+      Green is the start, red is the goal. The maze is carved live, then the
+      solver explores (blue) before drawing its path.<br /><br />
+      Keys: <b>Space</b> pause · <b>N</b> new maze · <b>S</b> skip
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Size <b id="stat-dims">—</b></span>
+      <span>Seed <b id="stat-seed">—</b></span>
+      <span>Passages <b id="stat-passages">—</b></span>
+      <span>Path <b id="stat-path">—</b></span>
+      <span>Visited <b id="stat-visited">—</b></span>
+      <span>Status <b id="stat-status">Building</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="maze.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

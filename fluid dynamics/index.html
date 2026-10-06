@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fluid Dynamics — Navier–Stokes Sandbox</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Fluid <span>Dynamics</span></h1>
+    <p class="muted intro">Incompressible smoke on a grid, solved in the browser.</p>
+
+    <h2 class="small">Run</h2>
+    <div class="buttons">
+      <button id="pause" class="btn btn-primary">Pause</button>
+      <button id="step" class="btn">Step</button>
+      <button id="splat" class="btn">Splat</button>
+      <button id="new-seed" class="btn">New seed</button>
+      <button id="clear" class="btn">Clear</button>
+    </div>
+
+    <h2 class="small">Grid</h2>
+    <label class="field">
+      <span>Resolution</span>
+      <select id="resolution">
+        <option value="80">80 × auto</option>
+        <option value="96" selected>96 × auto</option>
+        <option value="128">128 × auto</option>
+        <option value="160">160 × auto</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Steps per frame <em id="speed-value">1</em></span>
+      <input type="range" id="speed" min="1" max="3" step="1" value="1" />
+    </label>
+    <label class="check"><input type="checkbox" id="ambient" checked /> Ambient splats</label>
+
+    <h2 class="small">Forces</h2>
+    <label class="field">
+      <span>Pointer force <em id="force-value">1.0</em></span>
+      <input type="range" id="force" min="0.2" max="3" step="0.1" value="1" />
+    </label>
+    <label class="field">
+      <span>Vorticity <em id="vorticity-value">2.5</em></span>
+      <input type="range" id="vorticity" min="0" max="8" step="0.1" value="2.5" />
+    </label>
+    <label class="field">
+      <span>Buoyancy <em id="buoyancy-value">1.2</em></span>
+      <input type="range" id="buoyancy" min="0" max="6" step="0.1" value="1.2" />
+    </label>
+
+    <h2 class="small">Material</h2>
+    <label class="field">
+      <span>Viscosity <em id="viscosity-value">0.00002</em></span>
+      <input type="range" id="viscosity" min="0" max="0.002" step="0.00005" value="0.00002" />
+    </label>
+    <label class="field">
+      <span>Dye fade <em id="fade-value">0.995</em></span>
+      <input type="range" id="fade" min="0.97" max="1" step="0.001" value="0.995" />
+    </label>
+    <label class="field">
+      <span>Splat radius <em id="radius-value">8</em></span>
+      <input type="range" id="radius" min="3" max="18" step="1" value="8" />
+    </label>
+
+    <p class="muted hint">
+      Drag on the stage to push dye through the fluid. <b>Vorticity</b> restores
+      the swirl the projection damps; <b>Buoyancy</b> makes the dye rise.<br /><br />
+      Keys: <b>Space</b> play/pause · <b>S</b> step · <b>C</b> clear · <b>N</b> new seed
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Grid <b id="stat-grid">—</b></span>
+      <span>Speed <b id="stat-speed">—</b></span>
+      <span>Dye <b id="stat-dye">—</b></span>
+      <span>FPS <b id="stat-fps">—</b></span>
+      <span>Status <b id="stat-status">Running</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="fluid.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

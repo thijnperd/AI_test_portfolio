@@ -1,0 +1,18 @@
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+
+# The projects here are dependency-free; this is a guard in case one ever
+# gains a package manager.
+node_modules/
+
+# Local scratch
+*.local
+
+# Wiekentwie/WieKentWie.xlsm is a real workbook holding real contact data and
+# document metadata. It stays local: the VBA source (WieKentWie.bas) is what is
+# worth publishing, and the workbook can be rebuilt by importing it.
+*.xlsm

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlgoArt · generative studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="panel panel-left">
+    <header class="brand-block">
+      <h1 class="brand">Algo<span>Art</span></h1>
+      <p class="brand-sub">generative studio</p>
+    </header>
+
+    <p class="eyebrow">Sketches</p>
+    <ul id="gallery" class="gallery"></ul>
+
+    <div class="keymap">
+      <p class="eyebrow">Keys</p>
+      <ul class="key-list">
+        <li><kbd>Space</kbd><span>pause / resume</span></li>
+        <li><kbd>R</kbd><span>new seed</span></li>
+        <li><kbd>P</kbd><span>randomize params</span></li>
+        <li><kbd>0</kbd><span>reset params</span></li>
+        <li><span class="kbd-pair"><kbd>←</kbd><kbd>→</kbd></span><span>switch sketch</span></li>
+        <li><kbd>E</kbd><span>export PNG</span></li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="stage-wrap">
+    <header class="toolbar">
+      <div class="tool-group">
+        <button id="btn-pause" type="button" title="Pause / resume (Space)">⏸ Pause</button>
+        <button id="btn-reseed" type="button" title="New seed (R)">⟳ Reseed</button>
+        <button id="btn-random" type="button" title="Randomize params (P)">⚄ Randomize</button>
+        <button id="btn-reset" type="button" title="Reset params to defaults (0)">↺ Reset</button>
+        <button id="btn-export" type="button" title="Save PNG (E)">⬇ PNG</button>
+      </div>
+      <span class="spacer"></span>
+      <div class="background-group">
+        <label for="background-mode">background</label>
+        <select id="background-mode" aria-label="Artwork background">
+          <option value="transparent">Transparent</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+      <div class="seed-group">
+        <label class="seed-label" for="seed-input">seed</label>
+        <input id="seed-input" type="number" min="0" step="1" aria-label="Seed value">
+        <button id="btn-seed" type="button" class="btn-quiet" title="Apply seed">Go</button>
+      </div>
+    </header>
+
+    <div id="stage" class="stage">
+      <canvas id="canvas" role="img" aria-label="Generated artwork"></canvas>
+    </div>
+
+    <footer id="hud" class="hud"></footer>
+  </main>
+
+  <aside class="panel panel-right">
+    <p class="eyebrow">Parameters</p>
+    <div id="params"></div>
+  </aside>
+
+  <!--
+    App entry point.
+
+    Load order matters for the `core/` files: `utils.js` must come before
+    `engine.js` because the engine reaches for `window.Art.RNG` and
+    `window.Art.Noise` during boot. Sketch files can appear in any order as
+    long as both `core/*.js` have already loaded. Each sketch calls
+    `Art.register(...)` during its own IIFE, and the engine renders the first
+    one by default.
+
+    No build step, no modules: this page is meant to run directly from
+    `file://`.
+  -->
+  <script src="core/utils.js"></script>
+  <script src="core/engine.js"></script>
+  <!-- Gallery order intentionally builds from quieter studies to the most immersive pieces. -->
+  <script src="sketches/noise-mosaic.js"></script>
+  <script src="sketches/noise-lines.js"></script>
+  <script src="sketches/flow-field.js"></script>
+  <script src="sketches/line-displacement.js"></script>
+  <script src="sketches/spirograph.js"></script>
+  <script src="sketches/wave-interference.js"></script>
+  <script src="sketches/noise-contours.js"></script>
+  <script src="sketches/type-dots.js"></script>
+  <script src="sketches/delaunay.js"></script>
+  <script src="sketches/voronoi-atlas.js"></script>
+  <script src="sketches/brownian-choir.js"></script>
+  <script src="sketches/faultline.js"></script>
+  <script src="sketches/physarum.js"></script>
+  <script src="sketches/sandpile.js"></script>
+  <script src="sketches/strange-atlas.js"></script>
+  <script src="sketches/order-disorder.js"></script>
+  <script src="sketches/substrate.js"></script>
+  <script src="sketches/differential-growth.js"></script>
+  <script src="sketches/epicycle.js"></script>
+  <script src="sketches/meander.js"></script>
+  <script src="sketches/recursive-basilica.js"></script>
+  <script src="sketches/morphogenesis.js"></script>
+  <script src="sketches/apotheosis.js"></script>
+</body>
+</html>

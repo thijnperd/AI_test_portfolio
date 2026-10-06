@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2048</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">2048</h1>
+    <p class="muted intro">Slide the tiles, merge the numbers, climb the ladder.</p>
+
+    <div class="scores">
+      <div class="score-box">
+        <span>Score</span>
+        <b id="score">0</b>
+      </div>
+      <div class="score-box">
+        <span>Best</span>
+        <b id="best">0</b>
+      </div>
+    </div>
+
+    <div class="scores">
+      <div class="score-box">
+        <span>Best tile</span>
+        <b id="best-tile">&mdash;</b>
+      </div>
+      <div class="score-box">
+        <span>Runs</span>
+        <b id="runs">0</b>
+      </div>
+    </div>
+
+    <button id="new-game" class="btn btn-primary">New game</button>
+
+    <section class="ladder">
+      <h2 class="ladder-title">
+        The ladder
+        <span id="ladder-next" class="ladder-next"></span>
+      </h2>
+      <ol id="milestones" class="milestones"></ol>
+      <p class="muted ladder-note" id="ladder-note">&nbsp;</p>
+    </section>
+
+    <p class="muted hint">
+      Use the <b>arrow keys</b> (or <b>W A S D</b>) to slide the board. Equal
+      tiles that meet merge into one. A new tile appears after every move.
+      2048 is only the goal, not the end &mdash; keep going.
+    </p>
+    <p class="muted hint status-line">Status: <b id="status">Playing</b></p>
+  </aside>
+
+  <main class="stage">
+    <div class="board-wrap">
+      <div id="board" class="board"></div>
+      <div id="overlay" class="overlay" hidden>
+        <p id="overlay-text">Game over</p>
+        <p id="overlay-sub" class="overlay-sub"></p>
+        <div class="overlay-actions">
+          <button id="overlay-continue" class="btn" hidden>Keep going</button>
+          <button id="overlay-button" class="btn btn-primary">New game</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

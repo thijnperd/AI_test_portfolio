@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wave Function Collapse — Tilemap Generator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Wave <span>Function Collapse</span></h1>
+    <p class="muted intro">Tileset maps grown from edge constraints alone.</p>
+
+    <h2 class="small">Run</h2>
+    <div class="buttons">
+      <button id="pause" class="btn btn-primary">Pause</button>
+      <button id="step" class="btn">Step</button>
+      <button id="solve" class="btn">Solve all</button>
+      <button id="new-seed" class="btn">New seed</button>
+      <button id="clear" class="btn">Clear</button>
+    </div>
+
+    <h2 class="small">Grid</h2>
+    <label class="field">
+      <span>Columns <em id="width-value">32</em></span>
+      <input type="range" id="width" min="8" max="80" step="1" value="32" />
+    </label>
+    <label class="field">
+      <span>Rows <em id="height-value">24</em></span>
+      <input type="range" id="height" min="8" max="80" step="1" value="24" />
+    </label>
+    <label class="field">
+      <span>Tile set</span>
+      <select id="tileset">
+        <option value="circuit" selected>Circuit</option>
+        <option value="garden">Roads &amp; Rivers</option>
+      </select>
+    </label>
+
+    <h2 class="small">Collapse</h2>
+    <label class="field">
+      <span>Speed <em id="speed-value">2</em> cells/frame</span>
+      <input type="range" id="speed" min="1" max="16" step="1" value="2" />
+    </label>
+    <label class="check"><input type="checkbox" id="animate" checked /> Animate the collapse</label>
+    <label class="check"><input type="checkbox" id="uncertain" checked /> Show uncertainty tint</label>
+    <label class="check"><input type="checkbox" id="boundary" checked /> Keep tracks off the edges</label>
+
+    <p class="muted hint">
+      Each cell starts with every tile possible. The solver collapses the
+      <b>least uncertain</b> cell next and prunes its neighbours until the map
+      is settled — backtracking whenever a choice paints it into a corner.<br /><br />
+      Keys: <b>Space</b> pause/run · <b>N</b> new seed · <b>S</b> step · <b>F</b> solve all
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Grid <b id="stat-grid">—</b></span>
+      <span>Collapsed <b id="stat-collapsed">—</b></span>
+      <span>Contradictions <b id="stat-contradictions">0</b></span>
+      <span>Seed <b id="stat-seed">—</b></span>
+      <span>Status <b id="stat-status">Collapsing</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="wfc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

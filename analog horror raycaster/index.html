@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Static Halls — Analog Horror Raycaster</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="screen">
+    <canvas id="view"></canvas>
+    <div class="crt" aria-hidden="true"></div>
+    <div id="heartbeat" class="heartbeat" aria-hidden="true"></div>
+
+    <div class="hud">
+      <div class="hud-top">
+        <span class="hud-top-left">
+          <span class="rec"><i class="dot"></i>REC</span>
+          <span class="cam">CAM 04</span>
+          <span id="fps" class="fps" hidden>--</span>
+        </span>
+        <div class="hud-top-right">
+          <span id="depth" class="depth">TAPE 01</span>
+          <span id="tapes" class="tapes">0/0</span>
+          <span id="shards" class="shards">&#9672; 0</span>
+          <span id="clock" class="clock">----</span>
+        </div>
+      </div>
+
+      <div class="center">
+        <h1 id="message" class="message"></h1>
+        <p id="submessage" class="submessage"></p>
+      </div>
+
+      <div class="hud-bottom">
+        <p id="proximity" class="proximity" hidden></p>
+        <p id="hidden-badge" class="hidden-badge" hidden>HIDING &mdash; DREAD FALLING</p>
+        <div class="gauges">
+          <div class="dread">
+            <span class="dread-label">DREAD</span>
+            <div class="dread-track"><div id="dread-fill" class="dread-fill"></div></div>
+            <span id="dread-label" class="dread-value">0%</span>
+          </div>
+          <div class="dread stamina">
+            <span id="stamina-label" class="dread-label">BREATH</span>
+            <div class="dread-track"><div id="stamina-fill" class="dread-fill stamina-fill"></div></div>
+          </div>
+        </div>
+        <p id="hint" class="hint"></p>
+      </div>
+    </div>
+
+    <canvas id="minimap" class="minimap" width="150" height="150"></canvas>
+
+    <!-- main menu + guide + settings -->
+    <section id="menu" class="menu">
+      <div class="menu-panel">
+        <header class="menu-head">
+          <h1 class="menu-title">STATIC HALLS</h1>
+          <p class="menu-sub">a decaying tape &middot; tape <span id="menu-depth">01</span></p>
+        </header>
+
+        <div class="menu-cols">
+          <div class="menu-guide">
+            <h2>How it works</h2>
+            <p class="menu-lede">
+              The halls are a maze. The way out is the farthest cell; reach it and the
+              tape descends one deeper &mdash; bigger, faster, less patient.
+            </p>
+            <ul>
+              <li><b>Two ways out.</b> The green glow is the exit. The red glow is the <b>den</b> &mdash; where it beds down, and the other ending. That one pays triple, and you have to walk in.</li>
+              <li><b>Tapes</b> lie in the corridors. Walk over one for shards.</li>
+              <li><b>Shards</b> buy kit at the exchange (<kbd>B</kbd>). Kit survives death; depth does not.</li>
+              <li><b>Dread</b> climbs the longer you stay. It thickens the fog, sours the picture and quickens the presence.</li>
+              <li><b>Hide</b> &mdash; hold <kbd>C</kbd> while standing still. Dread falls and it loses your pace; step out and it catches back up.</li>
+              <li><b>It</b> hunts, then goes home to its den and lies still, then comes back. Look at it from far off and it slips away &mdash; so you rarely see it whole. A ward survives one touch and sends it home.</li>
+              <li><b>Chart</b> on <kbd>M</kbd> swings the minimap between close and wide. It only shows what you have already walked past.</li>
+              <li><b>Sprint</b> on <kbd>Shift</kbd> burns breath; stop and it returns.</li>
+            </ul>
+          </div>
+
+          <div class="menu-settings">
+            <h2>Settings</h2>
+            <label class="set">
+              <span>Field of view <b id="set-fov-val">66&deg;</b></span>
+              <input id="set-fov" type="range" min="55" max="110" step="1" value="66" />
+            </label>
+            <label class="set">
+              <span>Look sensitivity <b id="set-sens-val">1.0&times;</b></span>
+              <input id="set-sens" type="range" min="0.3" max="3" step="0.05" value="1" />
+            </label>
+            <label class="set">
+              <span>Brightness <b id="set-bright-val">1.00&times;</b></span>
+              <input id="set-bright" type="range" min="0.6" max="1.8" step="0.05" value="1" />
+            </label>
+            <label class="set">
+              <span>Camera motion <b id="set-motion-val">1.00&times;</b></span>
+              <input id="set-motion" type="range" min="0" max="1.5" step="0.05" value="1" />
+            </label>
+            <label class="set">
+              <span>Volume <b id="set-vol-val">100%</b></span>
+              <input id="set-vol" type="range" min="0" max="1" step="0.05" value="1" />
+            </label>
+
+            <div class="set-toggles">
+              <label class="toggle"><input id="set-headbob" type="checkbox" checked /> Head bob</label>
+              <label class="toggle"><input id="set-dither" type="checkbox" checked /> Dither</label>
+              <label class="toggle"><input id="set-grain" type="checkbox" checked /> Grain</label>
+              <label class="toggle"><input id="set-mist" type="checkbox" checked /> Mist</label>
+              <label class="toggle"><input id="set-tint" type="checkbox" checked /> Red tint</label>
+              <label class="toggle"><input id="set-subtitles" type="checkbox" checked /> Subtitles</label>
+              <label class="toggle"><input id="set-fps" type="checkbox" /> FPS counter</label>
+            </div>
+            <p class="set-note">Settings apply live and are remembered for this session.</p>
+          </div>
+        </div>
+
+        <footer class="menu-foot">
+          <button id="menu-begin" class="menu-begin" type="button">BEGIN</button>
+          <p class="menu-hint">
+            <kbd>Enter</kbd> to begin &middot; <kbd>Esc</kbd> pauses &middot;
+            <kbd>B</kbd> exchange &middot; <kbd>M</kbd> chart &middot; <kbd>C</kbd> hide &middot;
+            <kbd>`</kbd> test console
+          </p>
+        </footer>
+      </div>
+    </section>
+
+    <!-- secret test console -->
+    <section id="admin" class="admin" hidden>
+      <div class="admin-panel">
+        <header class="admin-head">
+          <h2>TEST CONSOLE</h2>
+          <span class="admin-badge">not part of the tape</span>
+          <span id="admin-fps" class="admin-fps">-- fps</span>
+        </header>
+        <div id="admin-body" class="admin-body"></div>
+        <p id="admin-note" class="admin-note"></p>
+        <pre id="admin-state" class="admin-state"></pre>
+        <p class="admin-foot"><kbd>Esc</kbd> or <kbd>`</kbd> closes &middot; the game is paused while this is open</p>
+      </div>
+    </section>
+
+    <section id="shop" class="shop" hidden>
+      <div class="shop-panel">
+        <header class="shop-head">
+          <h2>EXCHANGE</h2>
+          <span id="shop-shards" class="shop-shards">&#9672; 0</span>
+        </header>
+        <p class="shop-lede">Tapes pay shards. Shards buy kit. Kit keeps you alive in the deeper tapes.</p>
+        <div id="shop-list" class="shop-list"></div>
+        <p id="shop-note" class="shop-note"></p>
+        <p class="shop-foot">press 1&ndash;9 to install &middot; B or ESC to close</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="raycast.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

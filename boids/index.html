@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boids — Flocking Simulation</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Boids <span>Flocking</span></h1>
+    <p class="muted intro">Emergent flocking from three simple steering rules.</p>
+
+    <h2 class="small">Simulation</h2>
+    <div class="buttons">
+      <button id="pause" class="btn btn-primary">Pause</button>
+      <button id="new-seed" class="btn">New seed</button>
+      <button id="scatter" class="btn">Scatter</button>
+    </div>
+
+    <h2 class="small">Flock</h2>
+    <label class="field">
+      <span>Boids <em id="count-value">160</em></span>
+      <input type="range" id="count" min="10" max="600" step="10" value="160" />
+    </label>
+    <label class="field">
+      <span>Perception <em id="perception-value">46</em> px</span>
+      <input type="range" id="perception" min="10" max="120" step="1" value="46" />
+    </label>
+    <label class="field">
+      <span>Max speed <em id="max-speed-value">120</em> px/s</span>
+      <input type="range" id="max-speed" min="30" max="260" step="5" value="120" />
+    </label>
+
+    <h2 class="small">Steering</h2>
+    <label class="field">
+      <span>Separation <em id="separation-value">1.5</em></span>
+      <input type="range" id="separation" min="0" max="3" step="0.1" value="1.5" />
+    </label>
+    <label class="field">
+      <span>Alignment <em id="alignment-value">1.0</em></span>
+      <input type="range" id="alignment" min="0" max="3" step="0.1" value="1.0" />
+    </label>
+    <label class="field">
+      <span>Cohesion <em id="cohesion-value">0.9</em></span>
+      <input type="range" id="cohesion" min="0" max="3" step="0.1" value="0.85" />
+    </label>
+
+    <h2 class="small">World</h2>
+    <label class="field">
+      <span>Edges</span>
+      <select id="edge">
+        <option value="wrap" selected>Wrap around</option>
+        <option value="bounce">Bounce</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="trails" checked /> Motion trails</label>
+
+    <p class="muted hint">
+      Lower <b>Separation</b> and raise <b>Cohesion</b> to clump the flock;
+      raise <b>Alignment</b> for a single flowing mass.<br /><br />
+      Keys: <b>Space</b> play/pause · <b>N</b> new seed
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Boids <b id="stat-count">—</b></span>
+      <span>Alignment <b id="stat-align">—</b></span>
+      <span>Status <b id="stat-status">Running</b></span>
+    </header>
+    <div id="canvas-wrap" class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
+  </main>
+
+  <script src="boids.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
