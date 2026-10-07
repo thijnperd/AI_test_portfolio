@@ -60,8 +60,9 @@ Paths in this index are relative to the repository root.
 | `falling sand/README.md` | Working in Falling Sand; use it to understand behavior, controls, and validation. |
 | `falling sand/test.js` | Changing or debugging the automaton; tests specify the expected material rules. |
 | `2048/(ai instructions).md` | Working anywhere in the 2048 project. |
-| `2048/README.md` | Working in 2048; use it to understand behavior, controls, and validation. |
-| `2048/test.js` | Changing or debugging the game rules; tests specify the expected sliding and merging behavior. |
+| `2048/README.md` | Working in 2048; use it to understand behavior, controls, the AI player and its measured strength, and validation. |
+| `2048/ai.js` | Changing or debugging the AI player (the heuristic, the expectimax search, or its move choice); it is the DOM-free `AiLib` core that `ai.js`'s tests cover. |
+| `2048/test.js` | Changing or debugging the game rules or the AI; tests specify the expected sliding and merging behavior, the heuristic terms, and the AI's move choice. |
 | `analog horror raycaster/(ai instructions).md` | Working anywhere in the Analog Horror Raycaster project. |
 | `analog horror raycaster/README.md` | Working in the raycaster; use it to understand behavior, controls, and validation. |
 | `analog horror raycaster/test.js` | Changing or debugging the engine (level, rays, fog, movement, pursuit, the item catalogue and effect stacking, collectible placement, fog of war, depth scaling, the den and its solver-backed route); tests specify the expected behavior. |

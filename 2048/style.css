@@ -182,6 +182,86 @@ body {
   min-height: 2.6em;
 }
 
+/* ---------- the AI's reasoning ---------- */
+
+.chooser {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/* one row per direction the AI considered */
+.choice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+  background: #12141a;
+  color: var(--muted);
+}
+
+/* a direction that would not change the board */
+.choice.illegal { opacity: 0.4; }
+
+.choice-dir {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text);
+}
+
+.choice.illegal .choice-dir { color: var(--muted); }
+
+.choice-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: #262a34;
+  overflow: hidden;
+}
+
+.choice-bar i {
+  display: block;
+  height: 100%;
+  background: #4a5c8a;
+  transition: width 0.15s ease;
+}
+
+.choice-value {
+  font-size: 11px;
+  text-align: right;
+  color: var(--muted);
+}
+
+/* the direction it picked */
+.choice.chosen {
+  border-left-color: var(--accent);
+  background: #1d2330;
+  color: var(--text);
+}
+
+.choice.chosen .choice-bar i { background: var(--accent); }
+.choice.chosen .choice-value { color: var(--text); }
+
+.ai-why {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.ai-why b { color: var(--text); }
+
+.ai-stats {
+  margin: 6px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+}
+
 /* ---------- buttons ---------- */
 
 .btn {
@@ -222,6 +302,36 @@ body {
   position: relative;
   width: min(70vh, 100%);
   aspect-ratio: 1 / 1;
+}
+
+/* The AI's chosen move, shown on the board itself so the arrow reads as the
+   thing thinking rather than a number in a sidebar. */
+.ai-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(11, 12, 16, 0.88);
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.ai-badge b {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.ai-badge.playing {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .board {
@@ -311,11 +421,14 @@ body {
   .tile.spawn,
   .tile.merge,
   .rung.pop { animation: none; }
+  .choice-bar i { transition: none; }
 }
 
 /* ---------- focus ---------- */
 
-.btn:focus-visible {
+.btn:focus-visible,
+.check input:focus-visible,
+.field input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

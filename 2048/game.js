@@ -80,8 +80,8 @@
   }
 
   /* Ordered cell coordinates for a move, from the destination edge inward. */
-  function lines(game, dir) {
-    const n = game.size;
+  function lines(size, dir) {
+    const n = size;
     const out = [];
     if (dir === 'left' || dir === 'right') {
       for (let y = 0; y < n; y++) {
@@ -111,6 +111,60 @@
       g.push(row);
     }
     return g;
+  }
+
+  /* Apply a move to a copy of a grid, without spawning a tile.
+   *
+   * This is the single implementation of the sliding rules: `Game.move` calls
+   * it and so does the AI in `ai.js`, so a search can never disagree with the
+   * game about what a move does. Returns
+   * { grid, moved, gained, merged }.
+   *
+   * `out` is an optional grid to write into instead of allocating a new one —
+   * the AI reuses one buffer per search level, and copying beats allocating a
+   * fresh 4x4 per simulated move. When `out` is given, the returned `grid` is
+   * that buffer, so it must be consumed before the next call with the same
+   * buffer. */
+  function applyMove(grid, size, dir, out) {
+    if (DIRECTIONS.indexOf(dir) === -1) throw new Error('Unknown direction: ' + dir);
+    const lineCoords = lines(size, dir);
+    const target = out || [];
+    if (out) {
+      for (let y = 0; y < size; y++) {
+        const src = grid[y];
+        const dst = target[y];
+        for (let x = 0; x < size; x++) dst[x] = src[x];
+      }
+    } else {
+      for (let y = 0; y < size; y++) target.push(grid[y].slice());
+    }
+    const outGrid = target;
+
+    let moved = false;
+    let gained = 0;
+    const merged = [];
+
+    for (let l = 0; l < lineCoords.length; l++) {
+      const coords = lineCoords[l];
+      const values = [];
+      for (let i = 0; i < coords.length; i++) {
+        values.push(outGrid[coords[i][1]][coords[i][0]]);
+      }
+      const res = slideLine(values);
+      for (let i = 0; i < coords.length; i++) {
+        const x = coords[i][0];
+        const y = coords[i][1];
+        if (outGrid[y][x] !== res.line[i]) moved = true;
+        outGrid[y][x] = res.line[i];
+      }
+      gained += res.gained;
+      for (let m = 0; m < res.merged.length; m++) {
+        const c = coords[res.merged[m]];
+        merged.push([c[0], c[1]]);
+      }
+    }
+
+    return { grid: outGrid, moved: moved, gained: gained, merged: merged };
   }
 
   class Game {
@@ -222,45 +276,21 @@
 
     /* Slide all tiles toward `dir`. Returns { moved, gained }. */
     move(dir) {
-      if (DIRECTIONS.indexOf(dir) === -1) throw new Error('Unknown direction: ' + dir);
-      const lineCoords = lines(this, dir);
-      let moved = false;
-      let gained = 0;
-      const mergedCells = [];
-
-      for (let l = 0; l < lineCoords.length; l++) {
-        const coords = lineCoords[l];
-        const values = [];
-        for (let i = 0; i < coords.length; i++) {
-          values.push(this.grid[coords[i][1]][coords[i][0]]);
-        }
-        const res = slideLine(values);
-        for (let i = 0; i < coords.length; i++) {
-          const x = coords[i][0];
-          const y = coords[i][1];
-          if (this.grid[y][x] !== res.line[i]) moved = true;
-          this.grid[y][x] = res.line[i];
-        }
-        gained += res.gained;
-        for (let m = 0; m < res.merged.length; m++) {
-          const c = coords[res.merged[m]];
-          mergedCells.push([c[0], c[1]]);
-        }
-      }
-
-      this.lastMerged = mergedCells;
+      const res = applyMove(this.grid, this.size, dir);
+      this.lastMerged = res.merged;
       this.lastSpawned = null;
       this.justAchieved = null;
-      if (!moved) return { moved: false, gained: 0 };
+      if (!res.moved) return { moved: false, gained: 0 };
 
+      this.grid = res.grid;
       this.moveCount++;
-      this.score += gained;
+      this.score += res.gained;
       if (this.grid.some(function (row) { return row.indexOf(WIN_VALUE) !== -1; })) {
         this.won = true;
       }
       this.justAchieved = this.collectMilestones();
       this.lastSpawned = this.addRandomTile();
-      return { moved: true, gained: gained, achieved: this.justAchieved };
+      return { moved: true, gained: res.gained, achieved: this.justAchieved };
     }
 
     /* True while any move would change the board. */
@@ -296,6 +326,8 @@
   const GameLib = {
     Game: Game,
     slideLine: slideLine,
+    applyMove: applyMove,
+    emptyGrid: emptyGrid,
     makeRng: makeRng,
     DIRECTIONS: DIRECTIONS,
     WIN_VALUE: WIN_VALUE,

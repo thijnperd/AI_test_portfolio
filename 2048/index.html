@@ -35,6 +35,25 @@
 
     <button id="new-game" class="btn btn-primary">New game</button>
 
+    <h2 class="small">AI player</h2>
+    <label class="check"><input type="checkbox" id="ai-mode" /> Let the AI play</label>
+    <div class="buttons">
+      <button id="ai-step" class="btn">AI step</button>
+      <button id="ai-play" class="btn">Play</button>
+    </div>
+    <label class="field">
+      <span>Look ahead <em id="ai-depth-value">3</em> moves</span>
+      <input type="range" id="ai-depth" min="1" max="4" step="1" value="3" />
+    </label>
+    <label class="field">
+      <span>Move every <em id="ai-speed-value">160</em>ms</span>
+      <input type="range" id="ai-speed" min="50" max="800" step="10" value="160" />
+    </label>
+
+    <ol id="ai-candidates" class="chooser" aria-label="What the AI is weighing up"></ol>
+    <p class="muted ai-why" id="ai-why">Tick <b>Let the AI play</b> to watch it work through a board.</p>
+    <p class="muted ai-stats" id="ai-stats"></p>
+
     <section class="ladder">
       <h2 class="ladder-title">
         The ladder
@@ -53,8 +72,12 @@
   </aside>
 
   <main class="stage">
-    <div class="board-wrap">
+    <div class="board-wrap" id="board-wrap">
       <div id="board" class="board"></div>
+      <div class="ai-badge" id="ai-badge" hidden>
+        <b id="ai-badge-dir">&mdash;</b>
+        <span id="ai-badge-text"></span>
+      </div>
       <div id="overlay" class="overlay" hidden>
         <p id="overlay-text">Game over</p>
         <p id="overlay-sub" class="overlay-sub"></p>
@@ -67,6 +90,7 @@
   </main>
 
   <script src="game.js"></script>
+  <script src="ai.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

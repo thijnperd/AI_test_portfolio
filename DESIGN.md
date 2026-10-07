@@ -116,7 +116,7 @@ consistent.
 | `maze generator and solver` | **Instrument panel** — a statusbar of measurements while the maze is drawn. |
 | `boids` | **Instrument panel** — motion is the subject; the panel only steers it. |
 | `falling sand` | **Instrument panel, pixelated matter** — one pixel per cell, crisp and material. |
-| `2048` | **Instrument panel, warm centre** — the board is the hero; tiles warm from grey to gold as they grow. |
+| `2048` | **Instrument panel, warm centre** — the board is the hero; tiles warm from grey to gold as they grow. Its AI mode narrates itself in the rail: a shortlist of scored directions and the heuristic terms behind the winner, with the chosen move marked on the board. |
 | `analog horror raycaster` | **Authored exception — decaying VHS.** Its own palette (`--ink`, `--dim`, `--rec` signal red, `--amber` tape amber), scanlines, grain, a 288×162 dithered buffer, a fog-of-war minimap that expands on `M`, a pausing shop panel, two endings, and a menu that doubles as its settings and accessibility screen. It is the one place a second hue is allowed; it still obeys the *spirit*: mono type and chrome that recedes. |
 | `Wiekentwie` | **Not a browser surface.** Excel/VBA; follows the native tool's conventions. |
 

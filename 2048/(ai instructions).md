@@ -16,11 +16,12 @@ game core separate from the browser interface.
 
 | File | Responsibility |
 |---|---|
-| `game.js` | Board state, `slideLine` merge logic, moves in four directions, tile spawning, win/game-over detection, the `MILESTONES` ladder (`milestonesUpTo`, `nextMilestone`), achievement bookkeeping, and the seeded RNG. No DOM; exports `GameLib` for Node and the browser. |
-| `app.js` | Board rendering, keyboard input, records (best tile / runs), the ladder UI, and the overlay. Depends on `game.js`. |
-| `index.html` | UI structure and script load order (`game.js` before `app.js`). |
-| `style.css` | Layout, tile colours, and animations. |
-| `test.js` | Node.js tests for the game core, not browser UI tests. |
+| `game.js` | Board state, `slideLine` merge logic, `applyMove` (a pure move used by both the game and the AI), moves in four directions, tile spawning, win/game-over detection, the `MILESTONES` ladder (`milestonesUpTo`, `nextMilestone`), achievement bookkeeping, and the seeded RNG. No DOM; exports `GameLib` for Node and the browser. |
+| `ai.js` | The expectimax player: the heuristic and its weights, the max/chance search, `bestMove` (with the candidate shortlist the UI renders), and `playGame` for headless measurement. No DOM; exports `AiLib`. Depends on `game.js`. |
+| `app.js` | Board rendering, keyboard input, records (best tile / runs), the ladder UI, the overlay, and the visible AI mode. Depends on `game.js` and `ai.js`. |
+| `index.html` | UI structure and script load order (`game.js`, then `ai.js`, then `app.js`). |
+| `style.css` | Layout, tile colours, animations, and the AI readout. |
+| `test.js` | Node.js tests for the game core and the AI, not browser UI tests. |
 | `README.md` | User-facing setup, controls, rules, and test instructions. |
 
 ## Project constraints
@@ -54,6 +55,28 @@ game core separate from the browser interface.
   anything about the current board stays in `game.js`. Keep `localStorage`
   access inside the `load`/`save` helpers so a privacy-mode failure cannot
   throw.
+- **The AI must not fork the rules.** `ai.js` simulates moves with
+  `GameLib.applyMove`; never re-implement sliding in the AI, or a search can
+  start disagreeing with the game about what a move does. `applyMove`'s optional
+  `out` grid exists for the search's reuse — when it is passed, the returned
+  `grid` *is* that buffer, so consume it before the next call.
+- **The search is bounded by depth and node count, never by a clock.** A
+  wall-clock budget would make the AI play differently on different machines and
+  make it untestable. `maxNodes` and `maxDepth` are the levers; keep them the
+  only ones, and keep every loop over a `Map` or an object keyed in a fixed
+  order so the result cannot depend on iteration order.
+- **Nothing the AI does may touch the human records.** `render()` updates
+  `best` / `bestTile` only when `lastMoveHuman` is set, and `newGame()` counts a
+  run only if the human moved in it. The AI tracks its own best in its panel.
+  Breaking this turns "your best tile" into a description of the AI.
+- **The AI plays past 2048 by itself.** `aiMove()` acknowledges the win banner
+  instead of leaving it up, because a banner would sit over the board while the
+  AI kept playing. The human path must still show the banner — check both.
+- **Keep one search inside the laptop budget.** The browser derives the node
+  budget from the gap between moves (`gap × 90`, clamped 1,500–20,000) so a fast
+  cadence cannot peg a core. Measured at the default: ~20ms a move, worst case
+  ~40ms. If a change makes a move take noticeably longer, lower the budget or
+  the chance-node sample, do not raise the cap.
 
 ## Extending the game
 
@@ -77,6 +100,19 @@ game core separate from the browser interface.
    will be wrong until the first move.
 3. Lifetime records live in `app.js` under the `2048-best`, `2048-best-tile`,
    and `2048-runs` keys. Do not reuse those key names for per-run state.
+
+### Change the AI
+
+1. Weights live in `WEIGHTS` in `ai.js`; the depth and node budget come from
+   the caller (`app.js` passes them from its sliders).
+2. **Re-measure, do not assume.** `AiLib.playGame(seed, opts)` plays a real game
+   through the real core and reports the tile, score, moves, nodes and time.
+   Sweep several seeds: the cost and the strength are both seed-dependent, and a
+   single game will mislead you.
+3. Keep the returned `candidates` in `GameLib.DIRECTIONS` order with `legal`
+   flags for every direction — the UI renders one row per entry and depends on
+   all four being present, including the illegal ones.
+4. Update the measured table in `README.md` if the numbers move.
 
 ### Change rendering or controls
 
@@ -111,3 +147,18 @@ directions of the overlay: hidden while playing (`display: none`) and visible on
 a win or a game over (`display: flex`) — the bug above was an overlay that was
 *always* visible, so a one-directional check would have missed it. Keep README
 claims aligned with what the source and tests actually guarantee.
+
+The AI is driven through the same seam, which avoids waiting on its timer:
+
+```js
+window.GameApp.aiPlay();          // start it
+window.GameApp.aiStep();          // exactly one AI move, mode or not
+window.GameApp.aiState();         // { playing, dir, nodes, ms, candidates, ... }
+window.GameApp.aiPause();
+```
+
+The AI readout is asserted from the DOM (`#ai-candidates .choice.chosen`,
+`#ai-why`, `#ai-badge`) and the badge is checked by `display`, never by reading
+`hidden`. Note that the win banner must **not** appear when the AI crosses 2048:
+it acknowledges the win and plays on, so the overlay staying hidden there is the
+correct behaviour, not a missing banner.
