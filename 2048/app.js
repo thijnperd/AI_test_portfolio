@@ -16,6 +16,13 @@
  *
  * Records stay the human's: an AI move never rewrites "best tile", or the
  * record would just describe the AI. The AI keeps its own tally in its panel.
+ *
+ * The Blocks section owns the one thing that is neither a rule nor a record: the
+ * block config the player has built. It is kept in localStorage like the other
+ * records, and every edit rebuilds the ruleset (`blocks.js`) that the game and
+ * the AI then play by. Which merges are legal, what can spawn, and where the
+ * ladder's rungs sit all move together, so the ladder is rebuilt from the
+ * ruleset rather than from a constant.
  */
 (function () {
   'use strict';
@@ -51,6 +58,11 @@
     aiBadge: document.getElementById('ai-badge'),
     aiBadgeDir: document.getElementById('ai-badge-dir'),
     aiBadgeText: document.getElementById('ai-badge-text'),
+    blocks: document.getElementById('blocks'),
+    blockAdd: document.getElementById('block-add'),
+    blockReset: document.getElementById('block-reset'),
+    blocksNote: document.getElementById('blocks-note'),
+    blocksNoteInline: document.getElementById('blocks-note-inline'),
   };
 
   const DIRS = ['left', 'right', 'up', 'down'];
@@ -85,27 +97,70 @@
     }
   }
 
+  /* The block config is structured, so it goes through JSON — with the same
+   * promise that a broken or unavailable store cannot stop the game. */
+  function loadConfig() {
+    try {
+      const raw = window.localStorage.getItem('2048-blocks');
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function saveConfig(config) {
+    try {
+      window.localStorage.setItem('2048-blocks', JSON.stringify(config));
+    } catch (err) {
+      /* best effort */
+    }
+  }
+
   let best = load('2048-best', 0);
   let bestTile = load('2048-best-tile', 0);
   let runs = load('2048-runs', 0);
 
-  /* -------- ladder -------- */
+  /* -------- blocks -------- */
 
+  const KINDS = BlocksLib.KINDS;
+
+  let config = loadConfig() || BlocksLib.DEFAULT_CONFIG;
+  let rules = BlocksLib.makeRules(config);
+
+  /* A block's identity across the working config, the normalised ruleset, and
+   * the spawn table — the three can disagree, because a config the player is
+   * mid-edit is not necessarily one the rules can honour. */
+  function keyOf(block) {
+    return block.kind === 'number' ? 'n' + block.value : block.kind + ':' + block.amount;
+  }
+
+  /* -------- the ladder -------- */
+
+  /* The rungs come from the active ruleset, not from a constant, because the
+   * blocks decide which values are reachable. Rebuilt whenever the blocks are,
+   * so a rescaled ladder lands on real values. */
+  let rungs = [];
   const ladder = [];
-  GameLib.MILESTONES.forEach(function (rung) {
-    const li = document.createElement('li');
-    li.className = 'rung';
-    const value = document.createElement('b');
-    value.className = 'rung-value';
-    value.textContent = rung.value;
-    const label = document.createElement('span');
-    label.className = 'rung-label';
-    label.textContent = rung.label;
-    li.appendChild(value);
-    li.appendChild(label);
-    el.milestones.appendChild(li);
-    ladder.push(li);
-  });
+
+  function buildLadder(list) {
+    el.milestones.textContent = '';
+    rungs = list;
+    ladder.length = 0;
+    for (let i = 0; i < list.length; i++) {
+      const li = document.createElement('li');
+      li.className = 'rung';
+      const value = document.createElement('b');
+      value.className = 'rung-value';
+      value.textContent = list[i].value;
+      const label = document.createElement('span');
+      label.className = 'rung-label';
+      label.textContent = list[i].label;
+      li.appendChild(value);
+      li.appendChild(label);
+      el.milestones.appendChild(li);
+      ladder.push(li);
+    }
+  }
 
   /* Redraw the ladder against the current run and the best-ever tile. */
   function renderLadder() {
@@ -113,12 +168,15 @@
     const next = game.nextGoal();
     for (let i = 0; i < ladder.length; i++) {
       const rung = ladder[i];
-      const value = GameLib.MILESTONES[i].value;
+      const value = rungs[i].value;
       rung.classList.toggle('done', game.achievements.indexOf(value) !== -1);
       rung.classList.toggle('ever', value > reached && value <= bestTile);
       rung.classList.toggle('next', !!next && next.value === value);
     }
-    if (next) {
+    if (!rungs.length) {
+      el.ladderNext.textContent = 'none';
+      el.ladderNote.textContent = 'Nothing on this board can be reached twice over \u2014 there is no ladder to climb.';
+    } else if (next) {
       el.ladderNext.textContent = 'next ' + next.value;
       el.ladderNote.textContent = bestTile > 0 && next.value > bestTile
         ? 'A new personal best if you reach ' + next.value + '.'
@@ -131,13 +189,210 @@
 
   /* Briefly pop the rung a move just crossed. */
   function flashRung(value) {
-    const idx = GameLib.MILESTONES.findIndex(function (r) { return r.value === value; });
-    if (idx === -1) return;
-    const rung = ladder[idx];
-    rung.classList.remove('pop');
-    void rung.offsetWidth;
-    rung.classList.add('pop');
+    for (let i = 0; i < rungs.length; i++) {
+      if (rungs[i].value !== value) continue;
+      const rung = ladder[i];
+      rung.classList.remove('pop');
+      void rung.offsetWidth;
+      rung.classList.add('pop');
+      return;
+    }
   }
+
+  /* -------- the block editor -------- */
+
+  const blockRows = [];
+
+  /* What share of the spawns each block takes, keyed the same way a row is. A
+   * block the rules dropped (a duplicate) simply has no share, and the row is
+   * shown as out of play rather than quietly edited into something else. */
+  function spawnShares() {
+    const shares = {};
+    for (let i = 0; i < rules.spawns.length; i++) {
+      shares[keyOf(rules.spawns[i].block)] = rules.spawns[i].share;
+    }
+    return shares;
+  }
+
+  function formatShare(share) {
+    if (share === undefined) return 'out of play';
+    if (share >= 0.999) return 'always';
+    const pct = share * 100;
+    return (pct < 1 ? '<1' : String(Math.round(pct))) + '%';
+  }
+
+  /* The value field is a number for a plain block and an operand for an
+   * operator, so its label, range and meaning all follow the kind. */
+  function buildBlockRow(block, index, shares) {
+    const li = document.createElement('li');
+    li.className = 'block';
+    li.dataset.index = String(index);
+
+    const kind = document.createElement('select');
+    kind.className = 'block-kind';
+    kind.setAttribute('aria-label', 'Block ' + (index + 1) + ' kind');
+    for (let i = 0; i < KINDS.length; i++) {
+      const option = document.createElement('option');
+      option.value = KINDS[i].id;
+      option.textContent = KINDS[i].symbol ? KINDS[i].symbol + ' ' + KINDS[i].id : 'number';
+      kind.appendChild(option);
+    }
+    kind.value = block.kind;
+
+    const amount = document.createElement('input');
+    amount.className = 'block-amount';
+    amount.type = 'number';
+    amount.min = '1';
+    amount.max = String(BlocksLib.MAX_VALUE);
+    amount.value = String(block.kind === 'number' ? block.value : block.amount);
+    amount.title = block.kind === 'number'
+      ? 'The number on this tile'
+      : KINDS.filter(function (k) { return k.id === block.kind; })[0].hint;
+
+    const remove = document.createElement('button');
+    remove.className = 'btn btn-icon block-remove';
+    remove.type = 'button';
+    remove.textContent = '\u00d7';
+    remove.title = 'Remove this block';
+
+    const rarity = document.createElement('label');
+    rarity.className = 'block-rarity';
+    const caption = document.createElement('span');
+    caption.textContent = 'rarity';
+    const range = document.createElement('input');
+    range.className = 'block-weight';
+    range.type = 'range';
+    range.min = '0';
+    range.max = '100';
+    range.step = '1';
+    range.value = String(block.weight);
+    range.setAttribute('aria-label', 'How often this block spawns');
+    const shareLabel = document.createElement('b');
+    shareLabel.className = 'block-share';
+    shareLabel.textContent = formatShare(shares[keyOf(block)]);
+    rarity.appendChild(caption);
+    rarity.appendChild(range);
+    rarity.appendChild(shareLabel);
+
+    if (shares[keyOf(block)] === undefined) li.classList.add('inactive');
+
+    const top = document.createElement('div');
+    top.className = 'block-top';
+    top.appendChild(kind);
+    top.appendChild(amount);
+    top.appendChild(remove);
+    li.appendChild(top);
+    li.appendChild(rarity);
+
+    kind.addEventListener('change', function () {
+      editBlock(index, function (b) {
+        const next = KINDS.filter(function (k) { return k.id === kind.value; })[0];
+        const previous = b.kind === 'number' ? b.value : b.amount;
+        if (next.id === 'number') {
+          return { kind: 'number', value: previous, weight: b.weight };
+        }
+        return { kind: next.id, amount: previous, weight: b.weight };
+      });
+    });
+
+    amount.addEventListener('input', function () {
+      const value = parseInt(amount.value, 10);
+      if (!Number.isFinite(value)) return;   // mid-typing: keep what we had
+      editBlock(index, function (b) {
+        if (b.kind === 'number') { b.value = value; return b; }
+        b.amount = value;
+        return b;
+      });
+    });
+
+    range.addEventListener('input', function () {
+      editBlock(index, function (b) {
+        b.weight = parseInt(range.value, 10) || 0;
+        return b;
+      });
+    });
+
+    remove.addEventListener('click', function () {
+      config.blocks.splice(index, 1);
+      applyBlocks();
+    });
+
+    return li;
+  }
+
+  function renderBlocks() {
+    const shares = spawnShares();
+    el.blocks.textContent = '';
+    blockRows.length = 0;
+
+    // The last number block cannot be removed: a board that can never spawn a
+    // value can never make a move.
+    const numbers = [];
+    for (let i = 0; i < config.blocks.length; i++) {
+      if (config.blocks[i].kind === 'number') numbers.push(i);
+    }
+    const onlyNumber = numbers.length === 1 ? numbers[0] : -1;
+
+    for (let i = 0; i < config.blocks.length; i++) {
+      const row = buildBlockRow(config.blocks[i], i, shares);
+      if (i === onlyNumber) {
+        const btn = row.querySelector('.block-remove');
+        btn.disabled = true;
+        btn.title = 'A board needs at least one number to spawn';
+      }
+      el.blocks.appendChild(row);
+      blockRows.push(row);
+    }
+
+    el.blocksNoteInline.textContent = rules.vanilla
+      ? 'the classic pair'
+      : config.blocks.length + ' in play';
+    el.blocksNote.textContent = rules.notes.length
+      ? rules.notes.join(' ')
+      : 'Every block spawns with the share shown; the ladder above is built from what they can reach.';
+    el.blockAdd.disabled = config.blocks.length >= BlocksLib.MAX_BLOCKS;
+    el.blockReset.disabled = rules.vanilla;
+  }
+
+  /* Edit one block in place and re-derive everything that depends on it. */
+  function editBlock(index, change) {
+    config.blocks[index] = change(config.blocks[index]);
+    applyBlocks();
+  }
+
+  /* Rebuild the ruleset from the working config, hand it to the running game,
+   * and redraw the ladder it implies. The board itself is never touched: an edit
+   * changes which merges are legal and what can spawn from here on, not what is
+   * already on the grid. */
+  function applyBlocks() {
+    rules = BlocksLib.makeRules(config);
+    saveConfig({ blocks: config.blocks });
+    game.setRules(rules);
+    buildLadder(rules.ladder);
+    renderBlocks();
+    render();
+  }
+
+  /* Add a block that is not obviously a duplicate of one already in play. */
+  function addBlock() {
+    const taken = {};
+    for (let i = 0; i < config.blocks.length; i++) taken[keyOf(config.blocks[i])] = true;
+    for (let value = 8; value <= 8192; value *= 2) {
+      if (!taken['n' + value]) {
+        config.blocks.push({ kind: 'number', value: value, weight: 5 });
+        applyBlocks();
+        return;
+      }
+    }
+    config.blocks.push({ kind: 'divide', amount: 2, weight: 5 });
+    applyBlocks();
+  }
+
+  el.blockAdd.addEventListener('click', addBlock);
+  el.blockReset.addEventListener('click', function () {
+    config = { blocks: BlocksLib.normalize(BlocksLib.DEFAULT_CONFIG).blocks };
+    applyBlocks();
+  });
 
   /* -------- board -------- */
 
@@ -159,8 +414,10 @@
       for (let x = 0; x < SIZE; x++) {
         const v = game.grid[y][x];
         const d = tiles[y * SIZE + x];
-        d.textContent = v ? String(v) : '';
-        d.className = 'tile' + (v ? ' v' + Math.min(v, 8192) : '');
+        // The ruleset owns how a tile reads, because a custom block is not a
+        // number: an operator tile shows its symbol and hides its encoding.
+        d.textContent = v ? rules.label(v) : '';
+        d.className = 'tile' + (v ? ' ' + rules.klass(v) : '');
       }
     }
     flash(game.lastSpawned, 'spawn');
@@ -199,12 +456,12 @@
     } else if (celebrating) {
       const next = game.nextGoal();
       overlay.hidden = false;
-      overlayText.textContent = '2048!';
+      overlayText.textContent = game.winValue + '!';
       overlaySub.textContent = next
         ? 'The board goes on \u2014 next rung is ' + next.value + '.'
         : 'Every rung reached.';
       el.overlayContinue.hidden = false;
-      el.status.textContent = 'You reached 2048!';
+      el.status.textContent = 'You reached ' + game.winValue + '!';
     } else {
       overlay.hidden = true;
       const next = game.nextGoal();
@@ -254,6 +511,7 @@
     const choice = AiLib.bestMove(game.grid, {
       maxDepth: ai.depth,
       maxNodes: aiNodeBudget(ai.speed),
+      rules: rules,
     });
     ai.last = choice;
 
@@ -451,7 +709,7 @@
     run = { humanMoves: 0, aiMoves: 0 };
     lastMoveHuman = false;
     ai.last = null;
-    game = new GameLib.Game({ size: SIZE, seed: (Math.random() * 0xffffffff) >>> 0 });
+    game = new GameLib.Game({ size: SIZE, seed: (Math.random() * 0xffffffff) >>> 0, rules: rules });
     render();
     renderAI();
   }
@@ -540,8 +798,10 @@
     el.aiSpeedValue.textContent = String(ai.speed);
   });
 
-  let game = new GameLib.Game({ size: SIZE, seed: (Math.random() * 0xffffffff) >>> 0 });
+  let game = new GameLib.Game({ size: SIZE, seed: (Math.random() * 0xffffffff) >>> 0, rules: rules });
   buildChooser();
+  buildLadder(rules.ladder);
+  renderBlocks();
   el.aiDepthValue.textContent = String(ai.depth);
   el.aiSpeedValue.textContent = String(ai.speed);
   render();
@@ -564,6 +824,26 @@
     records: function () {
       return { best: best, bestTile: bestTile, runs: runs };
     },
+    /* The block editor's seams. `setBlocks` and `spawnValueAt` exist so a
+     * browser check can prove a rarity edit really changes the spawn table,
+     * and that a rescaled ladder lands on reachable values. */
+    setBlocks: function (next) {
+      config = next;
+      applyBlocks();
+      return rungs.map(function (r) { return r.value; });
+    },
+    blocks: function () {
+      return {
+        config: JSON.parse(JSON.stringify(config)),
+        shares: spawnShares(),
+        vanilla: rules.vanilla,
+        notes: rules.notes.slice(),
+        ladder: rungs.map(function (r) { return r.value; }),
+        winValue: rules.winValue,
+        spawns: rules.spawns.map(function (s) { return { value: s.value, share: s.share }; }),
+      };
+    },
+    spawnValueAt: function (r) { return rules.spawnValue(r); },
     aiStep: function () { return aiMove(); },
     aiPlay: function () { el.aiMode.checked = true; startPlaying(); },
     aiPause: stopPlaying,

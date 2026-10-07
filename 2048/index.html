@@ -54,6 +54,19 @@
     <p class="muted ai-why" id="ai-why">Tick <b>Let the AI play</b> to watch it work through a board.</p>
     <p class="muted ai-stats" id="ai-stats"></p>
 
+    <section class="blocks">
+      <h2 class="blocks-title">
+        Blocks
+        <span id="blocks-note-inline" class="ladder-next"></span>
+      </h2>
+      <ol id="blocks" class="blocks-list" aria-label="The tiles this board can spawn"></ol>
+      <div class="buttons">
+        <button id="block-add" class="btn">Add a block</button>
+        <button id="block-reset" class="btn">Reset</button>
+      </div>
+      <p class="muted blocks-note" id="blocks-note">&nbsp;</p>
+    </section>
+
     <section class="ladder">
       <h2 class="ladder-title">
         The ladder
@@ -66,7 +79,7 @@
     <p class="muted hint">
       Use the <b>arrow keys</b> (or <b>W A S D</b>) to slide the board. Equal
       tiles that meet merge into one. A new tile appears after every move.
-      2048 is only the goal, not the end &mdash; keep going.
+      Reaching the goal rung is not the end &mdash; keep going.
     </p>
     <p class="muted hint status-line">Status: <b id="status">Playing</b></p>
   </aside>
@@ -90,6 +103,7 @@
   </main>
 
   <script src="game.js"></script>
+  <script src="blocks.js"></script>
   <script src="ai.js"></script>
   <script src="app.js"></script>
 </body>

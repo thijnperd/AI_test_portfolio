@@ -488,6 +488,282 @@ test('a seeded AI game is reproducible, and a different seed plays differently',
   assert.notDeepStrictEqual(a, c, 'a different seed deals different tiles');
 });
 
+/* ------------------------------------------------------------------ */
+/* custom blocks: the arithmetic, the spawn table, and the ladder      */
+/* ------------------------------------------------------------------ */
+
+const BlocksLib = require('./blocks.js');
+
+function rulesOf(blocks) {
+  return BlocksLib.makeRules({ blocks: blocks });
+}
+
+const VANILLA = [{ kind: 'number', value: 2, weight: 90 }, { kind: 'number', value: 4, weight: 10 }];
+const THREES = [{ kind: 'number', value: 3, weight: 100 }];
+
+/* A board with one operator tile on it. Operator tiles are encoded as negative
+ * numbers, and `-1` is the first operator block in the config. */
+const OPERATOR_BOARD = [[8, -1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+
+function ladderValues(rules) {
+  return rules.ladder.map(function (r) { return r.value; });
+}
+
+test('applyOp applies each operator, and clamps at 1', function () {
+  assert.strictEqual(BlocksLib.applyOp('add', 64, 2), 66);
+  assert.strictEqual(BlocksLib.applyOp('subtract', 64, 2), 62);
+  assert.strictEqual(BlocksLib.applyOp('multiply', 64, 2), 128);
+  assert.strictEqual(BlocksLib.applyOp('divide', 64, 2), 32);
+  assert.strictEqual(BlocksLib.applyOp('divide', 9, 2), 5, 'division rounds to a whole tile');
+  assert.strictEqual(BlocksLib.applyOp('subtract', 2, 100), 1, 'a tile is shrunk, never erased');
+  assert.strictEqual(BlocksLib.applyOp('divide', 1, 99), 1);
+  assert.strictEqual(BlocksLib.applyOp('nonsense', 8, 2), 0, 'an unknown operator does nothing');
+});
+
+test('normalize fixes what a saved or hand-typed config can get wrong', function () {
+  const n = BlocksLib.normalize({ blocks: [
+    { kind: 'number', value: 2.4, weight: 5000 },
+    { kind: 'wat', value: 6 },
+    { kind: 'number', value: 6 },
+    { kind: 'divide', amount: 0 },
+  ] });
+  assert.deepStrictEqual(n.blocks, [
+    { kind: 'number', value: 2, weight: 1000 },
+    { kind: 'number', value: 6, weight: 0 },
+    { kind: 'divide', amount: 1, weight: 0 },
+  ], 'rounded, clamped, and an unknown kind falls back to a number');
+  assert.strictEqual(n.dropped, 1, 'the duplicate 6 is dropped');
+
+  assert.strictEqual(BlocksLib.normalize(null).blocks.length, 2, 'no config means the default pair');
+  assert.strictEqual(BlocksLib.normalize({ blocks: 'nonsense' }).blocks.length, 2);
+  assert.strictEqual(BlocksLib.normalize({ blocks: [] }).blocks.length, 2);
+});
+
+test('normalize never leaves a board with nothing to spawn', function () {
+  const n = BlocksLib.normalize({ blocks: [
+    { kind: 'number', value: 2, weight: 0 },
+    { kind: 'divide', amount: 2, weight: 10 },
+  ] });
+  assert.strictEqual(n.restored, true, 'the number block was put back in play');
+  assert.strictEqual(n.blocks[0].weight, 1);
+  assert.ok(n.blocks.some(function (b) { return b.kind === 'number' && b.weight > 0; }),
+    'a board of operators alone could never make a move');
+
+  const onlyOperators = BlocksLib.normalize({ blocks: [{ kind: 'multiply', amount: 2, weight: 5 }] });
+  assert.ok(onlyOperators.blocks.some(function (b) { return b.kind === 'number' && b.weight > 0; }),
+    'even a config with no numbers at all gets one back');
+});
+
+test('the default blocks reproduce the vanilla game exactly', function () {
+  const rules = BlocksLib.makeRules(null);
+  assert.strictEqual(rules.vanilla, true);
+  assert.deepStrictEqual(rules.spawns.map(function (s) { return s.value; }), [2, 4]);
+  assert.strictEqual(rules.spawns[0].upto, 0.9, 'the same 90% boundary the game used to hard-code');
+  assert.strictEqual(rules.spawnValue(0), 2);
+  assert.strictEqual(rules.spawnValue(0.8999), 2);
+  assert.strictEqual(rules.spawnValue(0.9), 4, 'the boundary belongs to the 4, as `rng() < 0.9` did');
+  assert.strictEqual(rules.spawnValue(0.999), 4);
+  assert.strictEqual(rules.winValue, GameLib.WIN_VALUE);
+  assert.deepStrictEqual(rules.ladder.map(function (r) { return [r.value, r.label]; }),
+    GameLib.MILESTONES.map(function (r) { return [r.value, r.label]; }),
+    'the derived ladder must be exactly the ladder the game always had');
+});
+
+test('the spawn table is the rarity control', function () {
+  const rules = rulesOf([{ kind: 'number', value: 2, weight: 0 }, { kind: 'number', value: 8, weight: 1 }]);
+  assert.deepStrictEqual(rules.spawns.map(function (s) { return s.value; }), [8],
+    'a weight of 0 takes a block out of the table entirely');
+  assert.strictEqual(rules.spawns[0].share, 1);
+
+  const g = new GameLib.Game({ size: 4, seed: 11, rules: rules });
+  g.load(ZERO4);
+  for (let i = 0; i < 16; i++) g.addRandomTile();
+  assert.deepStrictEqual(g.grid.flat().filter(function (v) { return v !== 0; }),
+    [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8], 'only the block with a weight ever spawns');
+
+  const shares = rulesOf([
+    { kind: 'number', value: 2, weight: 90 },
+    { kind: 'number', value: 4, weight: 10 },
+    { kind: 'divide', amount: 2, weight: 100 },
+  ]).spawns;
+  assert.strictEqual(shares.length, 3);
+  assert.ok(Math.abs(shares[2].share - 0.5) < 1e-9, 'weights are shares of the whole table');
+  assert.strictEqual(shares[2].value, -1, 'an operator block spawns as its own tile');
+});
+
+test('mergePair: equal numbers merge, an operator merges into any number', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'divide', amount: 2, weight: 5 }]));
+  assert.strictEqual(rules.mergePair(4, 4), 8, 'the vanilla rule is unchanged');
+  assert.strictEqual(rules.mergePair(2, 4), 0, 'unequal numbers still do not merge');
+  assert.strictEqual(rules.mergePair(0, 0), 0, 'empty cells never merge');
+  assert.strictEqual(rules.mergePair(8, 0), 0);
+  assert.strictEqual(rules.mergePair(64, -1), 32, 'divide what it meets by 2');
+  assert.strictEqual(rules.mergePair(-1, 64), 32, 'whichever side it is on');
+  assert.strictEqual(rules.mergePair(-1, -1), 0, 'two operators never merge with each other');
+  assert.strictEqual(rules.mergePair(-1, 1), 1, 'and the clamp holds through a merge');
+});
+
+test('two operator tiles next to each other are not a move', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'divide', amount: 2, weight: 5 }]));
+  const g = new GameLib.Game({ size: 4, seed: 1, rules: rules });
+  g.load([[-1, -1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  assert.strictEqual(g.canMove(), true, 'the board is not full');
+  const r = g.move('left');
+  assert.strictEqual(r.moved, false, 'they slide past each other, they do not merge');
+  assert.strictEqual(g.grid[0][0], -1);
+  assert.strictEqual(g.grid[0][1], -1);
+});
+
+test('a move rewrites the tile an operator meets', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'divide', amount: 2, weight: 1 }]));
+  const g = new GameLib.Game({ size: 4, seed: 1, rules: rules });
+  g.load(OPERATOR_BOARD);
+  const r = g.move('left');
+  assert.strictEqual(r.moved, true);
+  assert.strictEqual(g.grid[0][0], 4, 'the 8 met the \u00f72 and became a 4');
+  assert.strictEqual(r.gained, 4, 'the score pays the tile the merge created');
+  assert.ok(g.lastMerged.some(function (c) { return c[0] === 0 && c[1] === 0; }));
+});
+
+test('the ladder rescales onto values the blocks can actually reach', function () {
+  const threes = BlocksLib.makeRules({ blocks: THREES });
+  assert.deepStrictEqual(ladderValues(threes), [96, 192, 384, 768, 1536, 3072, 6144, 12288],
+    'doubling a 3 never lands on a power of two');
+  assert.deepStrictEqual(threes.ladder.map(function (r) { return r.label; }),
+    GameLib.MILESTONES.map(function (r) { return r.label; }), 'the rungs keep their names');
+  assert.strictEqual(threes.winValue, 3072, 'and the goal moves with them');
+  assert.strictEqual(threes.vanilla, false);
+
+  for (const rung of threes.ladder) {
+    assert.strictEqual(rung.value % 3, 0, rung.value + ' is a 3-board value');
+  }
+});
+
+test('every rung is the smallest reachable value at or above its target', function () {
+  const configs = [null, { blocks: THREES }, { blocks: VANILLA.concat([{ kind: 'multiply', amount: 3, weight: 5 }]) }];
+  for (const config of configs) {
+    const rules = BlocksLib.makeRules(config);
+    const values = BlocksLib.reachableValues(rules);
+    assert.ok(values.length > 0);
+    for (const rung of rules.ladder) {
+      assert.ok(values.indexOf(rung.value) !== -1, rung.value + ' must be reachable');
+      for (const v of values) {
+        assert.ok(v < rung.target || v >= rung.value,
+          v + ' sits between the target ' + rung.target + ' and the rung ' + rung.value);
+      }
+    }
+  }
+});
+
+test('reachableValues is closed under the rules it was derived from', function () {
+  const rules = rulesOf([{ kind: 'number', value: 3, weight: 100 }, { kind: 'multiply', amount: 5, weight: 10 }]);
+  const values = BlocksLib.reachableValues(rules);
+  const seen = {};
+  for (const v of values) seen[v] = true;
+  assert.ok(seen[3], 'the spawnable value is in it');
+  for (const v of values) {
+    assert.ok(v >= 1);
+    // Only up to the ceiling the closure is derived under: the derivation is
+    // allowed to stop above the top target, it is not allowed to be wrong below it.
+    if (v * 2 <= 16384) assert.ok(seen[v * 2], 'doubling ' + v + ' to ' + (v * 2));
+    for (const op of rules.operators) {
+      const result = BlocksLib.applyOp(op.kind, v, op.amount);
+      if (result <= 16384) assert.ok(seen[result], op.kind + ' of ' + v);
+    }
+  }
+  assert.ok(values.every(function (v) { return v % 3 === 0; }), 'nothing off the 3-lattice is reachable');
+});
+
+test('an operator that only shrinks cannot cap a ladder the doubling still climbs', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'divide', amount: 2, weight: 5 }]));
+  assert.deepStrictEqual(ladderValues(rules), ladderValues(BlocksLib.makeRules(null)),
+    'a \u00f72 tile halves what it meets, but two 2s still make a 4');
+  assert.strictEqual(rules.winValue, 2048);
+
+  assert.deepStrictEqual(BlocksLib.makeLadder([]), [], 'an empty value set has no rungs');
+});
+
+test('the derived ladder drives the milestones and the next goal', function () {
+  const g = new GameLib.Game({ size: 4, seed: 1, rules: BlocksLib.makeRules({ blocks: THREES }) });
+  g.load([[48, 48, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  assert.deepStrictEqual(g.achievements, [], '48 is below every rung of a 3-board ladder');
+  assert.strictEqual(g.nextGoal().value, 96, 'the first thing to aim at is 96, not 64');
+
+  const r = g.move('left');
+  assert.strictEqual(g.maxTile(), 96);
+  assert.strictEqual(r.achieved, 96, 'and that is what the move reports');
+  assert.deepStrictEqual(g.achievements, [96]);
+  assert.strictEqual(g.nextGoal().value, 192);
+});
+
+test('setRules swaps the rules mid-run without touching the board', function () {
+  const g = new GameLib.Game({ size: 4, seed: 1, rules: BlocksLib.makeRules(null) });
+  g.load([[256, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  assert.deepStrictEqual(g.achievements, [64, 128, 256]);
+  const before = JSON.stringify(g.grid);
+
+  g.setRules(BlocksLib.makeRules({ blocks: THREES }));
+  assert.strictEqual(JSON.stringify(g.grid), before, 'the board is exactly as it was');
+  assert.strictEqual(g.winValue, 3072, 'the goal follows the new ladder');
+  assert.strictEqual(g.nextGoal().value, 384, 'and so does the next rung above the 256');
+
+  // Editing the blocks must not pop a banner over a game that was already won.
+  const w = new GameLib.Game({ size: 4, seed: 1, rules: BlocksLib.makeRules(null) });
+  w.load([[2048, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  assert.strictEqual(w.winSeen, false);
+  w.setRules(BlocksLib.makeRules({ blocks: [{ kind: 'number', value: 2, weight: 100 }] }));
+  assert.strictEqual(w.winSeen, true, 'a board already sitting on the goal does not celebrate it again');
+  assert.strictEqual(w.won, false, 'and it is not retroactively a win');
+});
+
+test('a custom-rules game spawns exactly like its vanilla twin when the blocks are the default', function () {
+  // The proof that the block machinery changed nothing: the default config goes
+  // down the original code path, tile for tile and point for point.
+  const plain = new GameLib.Game({ size: 4, seed: 77 });
+  const derived = new GameLib.Game({ size: 4, seed: 77, rules: BlocksLib.makeRules(null) });
+  const resaved = new GameLib.Game({ size: 4, seed: 77, rules: BlocksLib.makeRules({ blocks: VANILLA }) });
+  // A four-move cycle is a real 2048 pattern, so the run crosses merges and
+  // spawns rather than sliding the same row forever.
+  const pattern = ['left', 'down', 'right', 'down'];
+  for (let i = 0; i < 80; i++) {
+    const dir = pattern[i % pattern.length];
+    plain.move(dir);
+    derived.move(dir);
+    resaved.move(dir);
+    assert.deepStrictEqual(derived.grid, plain.grid, 'default rules diverge at move ' + i);
+    assert.deepStrictEqual(resaved.grid, plain.grid);
+  }
+  assert.strictEqual(derived.score, plain.score);
+  assert.strictEqual(resaved.score, plain.score);
+  assert.ok(plain.moveCount > 60, 'the run really played: ' + plain.moveCount);
+  assert.ok(plain.maxTile() >= 32, 'and it really merged: ' + plain.maxTile());
+});
+
+test('the AI plays by the custom rules too', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'divide', amount: 2, weight: 50 }]));
+  const choice = AiLib.bestMove(OPERATOR_BOARD, { maxDepth: 2, maxNodes: 2000, rules: rules });
+  assert.strictEqual(choice.candidates.length, 4);
+  for (const c of choice.candidates) {
+    assert.strictEqual(c.legal, GameLib.applyMove(OPERATOR_BOARD, 4, c.dir, null, rules.mergePair).moved,
+      c.dir + ' legality must come from the block rules');
+  }
+  assert.ok(choice.dir, 'there is a move to make');
+  assert.ok(GameLib.applyMove(OPERATOR_BOARD, 4, choice.dir, null, rules.mergePair).moved);
+  assert.strictEqual(typeof choice.value, 'number');
+});
+
+test('the AI finishes a custom-rules game, and the same seed plays it again', function () {
+  const rules = rulesOf(VANILLA.concat([{ kind: 'add', amount: 2, weight: 30 }]));
+  const strip = function (r) {
+    return { moves: r.moves, score: r.score, maxTile: r.maxTile, nodes: r.nodes, over: r.over };
+  };
+  const a = strip(AiLib.playGame(3, { maxNodes: 1200, rules: rules }));
+  const b = strip(AiLib.playGame(3, { maxNodes: 1200, rules: rules }));
+  assert.deepStrictEqual(a, b, 'same seed, same game');
+  assert.strictEqual(a.over, true, 'and it plays it out to a dead board');
+  assert.ok(a.moves > 20, 'it took real moves to get there: ' + a.moves);
+});
+
 /* ---------- summary ---------- */
 
 console.log('');

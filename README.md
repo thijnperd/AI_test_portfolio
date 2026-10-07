@@ -19,7 +19,7 @@ also runs in Node.js so its rules are covered by tests.
 | [logic puzzles](logic%20puzzles) | Sudoku and the binary puzzle (Binairo), generated with a unique solution and solved one deduction at a time. |
 | [maze generator and solver](maze%20generator%20and%20solver) | Animated maze construction and pathfinding. |
 | [wave function collapse](wave%20function%20collapse) | A tilemap generator that grows maps from edge constraints alone, with backtracking. |
-| [2048](2048) | The sliding-tile puzzle, with a ladder of tile milestones that continues past 2048 and an expectimax AI you can watch solve the board. |
+| [2048](2048) | The sliding-tile puzzle, with custom blocks (divide, add, multiply — each with its own spawn rarity), a milestone ladder derived from the blocks in play, and an expectimax AI you can watch solve the board. |
 | [Wiekentwie](Wiekentwie) | A Dutch Excel/VBA app ("Wie kent wie?") for offering and searching contacts. |
 
 ## Running anything

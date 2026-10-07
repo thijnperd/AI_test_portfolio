@@ -43,6 +43,16 @@
  *
  * The sliding rules are not re-implemented here: moves are simulated with
  * `GameLib.applyMove`, the same function the game itself uses.
+ *
+ * ## Custom blocks
+ *
+ * `options.rules` is a ruleset from `blocks.js`, and the search follows it: the
+ * chance node averages over the blocks that can actually spawn and their real
+ * shares instead of the vanilla 90/10 pair, and the heuristic reads an operator
+ * tile through `rules.heuristicValue` rather than treating its encoding as a
+ * number. With no rules, or with the untouched default set, both collapse to
+ * the vanilla paths — `ctx.rules` and `ctx.merge` are then null, so the search
+ * is bit-for-bit the search it was before blocks existed.
  */
 (function (global) {
   'use strict';
@@ -53,6 +63,11 @@
 
   const DIRECTIONS = GameLib.DIRECTIONS;
   const WIN_VALUE = GameLib.WIN_VALUE;
+
+  /* The vanilla spawn distribution, used when no ruleset is given. The weights
+   * and the arithmetic match `rules.spawns` for the default blocks exactly, so
+   * a vanilla search is unchanged by the block machinery. */
+  const VANILLA_SPAWNS = [{ value: 2, share: 0.9 }, { value: 4, share: 0.1 }];
 
   /* Heuristic weights. Empty cells dominate; monotonicity is worth about a
    * third of an empty cell per unit; smoothness is a tie-breaker; the corner
@@ -92,6 +107,14 @@
     return known === undefined ? Math.log(value) / Math.LN2 : known;
   }
 
+  /* A tile's value as the heuristic should read it. An operator tile is a
+   * modifier rather than a magnitude, so the ruleset reports it as the smallest
+   * tile: it costs a cell like anything else, but it never pretends to be a
+   * 1024 and it never earns a corner bonus.
+   *
+   * This is a ternary at each use rather than a shared helper, for the same
+   * reason the loops below are written out in full: it runs a few times per cell
+   * of every scored position, and the call frame cost more than the branch. */
   function emptyCells(grid) {
     const size = grid.length;
     const out = [];
@@ -141,7 +164,7 @@
   /* How far each row and column is from being fully monotonic, in tile
    * doublings. The better of the two directions counts, and the total is
    * negative (0 is a perfectly monotonic board). */
-  function monotonicityOf(grid, size) {
+  function monotonicityOf(grid, size, rules) {
     let total = 0;
 
     /* Both loops are written out in full rather than sharing a callback: this
@@ -156,8 +179,8 @@
       while (next < size) {
         while (next < size && values[next] === 0) next++;
         if (next >= size) break;
-        const a = values[current] === 0 ? 0 : log2(values[current]);
-        const b = values[next] === 0 ? 0 : log2(values[next]);
+        const a = values[current] === 0 ? 0 : (rules ? log2(rules.heuristicValue(values[current])) : log2(values[current]));
+        const b = values[next] === 0 ? 0 : (rules ? log2(rules.heuristicValue(values[next])) : log2(values[next]));
         if (a > b) decreasing += b - a;
         else if (b > a) increasing += a - b;
         current = next;
@@ -174,8 +197,8 @@
       while (next < size) {
         while (next < size && grid[next][x] === 0) next++;
         if (next >= size) break;
-        const a = grid[current][x] === 0 ? 0 : log2(grid[current][x]);
-        const b = grid[next][x] === 0 ? 0 : log2(grid[next][x]);
+        const a = grid[current][x] === 0 ? 0 : (rules ? log2(rules.heuristicValue(grid[current][x])) : log2(grid[current][x]));
+        const b = grid[next][x] === 0 ? 0 : (rules ? log2(rules.heuristicValue(grid[next][x])) : log2(grid[next][x]));
         if (a > b) decreasing += b - a;
         else if (b > a) increasing += a - b;
         current = next;
@@ -188,18 +211,20 @@
   }
 
   /* Penalise neighbouring tiles that differ a lot — they can never merge. */
-  function smoothnessOf(grid, size) {
+  function smoothnessOf(grid, size, rules) {
     let total = 0;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const v = grid[y][x];
         if (v === 0) continue;
-        const a = log2(v);
+        const a = rules ? log2(rules.heuristicValue(v)) : log2(v);
         if (x + 1 < size && grid[y][x + 1] !== 0) {
-          total -= Math.abs(a - log2(grid[y][x + 1]));
+          const right = grid[y][x + 1];
+          total -= Math.abs(a - (rules ? log2(rules.heuristicValue(right)) : log2(right)));
         }
         if (y + 1 < size && grid[y + 1][x] !== 0) {
-          total -= Math.abs(a - log2(grid[y + 1][x]));
+          const below = grid[y + 1][x];
+          total -= Math.abs(a - (rules ? log2(rules.heuristicValue(below)) : log2(below)));
         }
       }
     }
@@ -214,12 +239,12 @@
   };
 
   /** Score a position, filling the shared scratch object with the terms. */
-  function assess(grid, weights) {
+  function assess(grid, weights, rules) {
     const w = weights || WEIGHTS;
     const size = sizeOf(grid);
     const empties = countEmpty(grid);
-    const monotonicity = monotonicityOf(grid, size);
-    const smoothness = smoothnessOf(grid, size);
+    const monotonicity = monotonicityOf(grid, size, rules);
+    const smoothness = smoothnessOf(grid, size, rules);
     const maxTile = maxTileOf(grid);
 
     let maxInCorner = false;
@@ -256,13 +281,13 @@
   }
 
   /** Score a position (no breakdown). */
-  function evaluateGrid(grid, weights) {
-    return assess(grid, weights);
+  function evaluateGrid(grid, weights, rules) {
+    return assess(grid, weights, rules);
   }
 
   /** The heuristic terms for a position, for the interface to explain itself. */
-  function analyse(grid, weights) {
-    assess(grid, weights);
+  function analyse(grid, weights, rules) {
+    assess(grid, weights, rules);
     return {
       empties: scratch.empties,
       monotonicity: scratch.monotonicity,
@@ -275,12 +300,13 @@
   }
 
   /** Directions that actually change the board, in a fixed order. */
-  function legalMoves(grid) {
+  function legalMoves(grid, rules) {
     const size = sizeOf(grid);
+    const merge = (rules && !rules.vanilla) ? rules.mergePair : null;
     const out = [];
     for (let i = 0; i < DIRECTIONS.length; i++) {
       const dir = DIRECTIONS[i];
-      const res = GameLib.applyMove(grid, size, dir);
+      const res = GameLib.applyMove(grid, size, dir, null, merge);
       if (res.moved) out.push({ dir: dir, grid: res.grid, gained: res.gained });
     }
     return out;
@@ -305,12 +331,19 @@
     for (let level = 0; level <= maxDepth + 1; level++) {
       scratch.push(GameLib.emptyGrid(size));
     }
+    // The untouched default blocks collapse to the vanilla paths: no rules to
+    // consult, no merge callback, and the built-in 90/10 spawn pair.
+    const rules = (options.rules && !options.rules.vanilla) ? options.rules : null;
+
     return {
       size: size,
       weights: options.weights || WEIGHTS,
       maxDepth: maxDepth,
       maxNodes: Math.max(1000, options.maxNodes || DEFAULTS.maxNodes),
       maxSpawnCells: Math.max(1, Math.min(16, options.maxSpawnCells || DEFAULTS.maxSpawnCells)),
+      rules: rules,
+      merge: rules ? rules.mergePair : null,
+      spawns: (rules && rules.spawns.length) ? rules.spawns : VANILLA_SPAWNS,
       nodes: 0,
       scratch: scratch,
     };
@@ -319,7 +352,7 @@
   /* Our turn: the best expectation over the legal directions. */
   function maxValue(grid, depth, ctx) {
     ctx.nodes++;
-    if (depth <= 0 || ctx.nodes > ctx.maxNodes) return evaluateGrid(grid, ctx.weights);
+    if (depth <= 0 || ctx.nodes > ctx.maxNodes) return evaluateGrid(grid, ctx.weights, ctx.rules);
 
     const size = ctx.size;
     const buffer = ctx.scratch[depth];
@@ -327,25 +360,27 @@
     let any = false;
 
     for (let i = 0; i < DIRECTIONS.length; i++) {
-      const res = GameLib.applyMove(grid, size, DIRECTIONS[i], buffer);
+      const res = GameLib.applyMove(grid, size, DIRECTIONS[i], buffer, ctx.merge);
       if (!res.moved) continue;
       any = true;
       const value = chanceValue(res.grid, depth, ctx);
       if (value > best) best = value;
     }
 
-    if (!any) return evaluateGrid(grid, ctx.weights);
+    if (!any) return evaluateGrid(grid, ctx.weights, ctx.rules);
     return best;
   }
 
-  /* The board's turn: average over every empty cell and both spawn values. */
+  /* The board's turn: average over every empty cell and every block that can
+   * spawn there, weighted by that block's real share of the spawn table. */
   function chanceValue(grid, depth, ctx) {
     ctx.nodes++;
-    if (depth <= 0 || ctx.nodes > ctx.maxNodes) return evaluateGrid(grid, ctx.weights);
+    if (depth <= 0 || ctx.nodes > ctx.maxNodes) return evaluateGrid(grid, ctx.weights, ctx.rules);
 
     const size = ctx.size;
+    const spawns = ctx.spawns;
     const all = emptyIndices(grid);
-    if (all.length === 0) return evaluateGrid(grid, ctx.weights);
+    if (all.length === 0) return evaluateGrid(grid, ctx.weights, ctx.rules);
 
     // Averaging all 16 cells times two spawn values at every chance node is
     // what makes a full-width search too expensive. When the board is open, a
@@ -365,14 +400,14 @@
       const y = (empties[i] / size) | 0;
       const saved = grid[y][x];
 
-      grid[y][x] = 2;
-      total += 0.9 * maxValue(grid, depth - 1, ctx);
-      grid[y][x] = 4;
-      total += 0.1 * maxValue(grid, depth - 1, ctx);
+      for (let s = 0; s < spawns.length; s++) {
+        grid[y][x] = spawns[s].value;
+        total += spawns[s].share * maxValue(grid, depth - 1, ctx);
+      }
 
       grid[y][x] = saved;
     }
-    // 0.9 + 0.1 = 1, so the mean is simply the total over the cells.
+    // The shares sum to 1, so the mean is simply the total over the cells.
     return total / empties.length;
   }
 
@@ -401,7 +436,7 @@
 
     for (let i = 0; i < DIRECTIONS.length; i++) {
       const dir = DIRECTIONS[i];
-      const res = GameLib.applyMove(grid, size, dir, buffer);
+      const res = GameLib.applyMove(grid, size, dir, buffer, ctx.merge);
       if (!res.moved) {
         candidates.push({ dir: dir, legal: false, value: null });
         continue;
@@ -437,7 +472,7 @@
       depth: depth,
       nodes: ctx.nodes,
       ms: now() - started,
-      breakdown: analyse(best.board, ctx.weights),
+      breakdown: analyse(best.board, ctx.weights, ctx.rules),
     };
   }
 
@@ -461,7 +496,7 @@
    */
   function playGame(seed, options) {
     const o = options || {};
-    const game = new GameLib.Game({ size: o.size || 4, seed: seed >>> 0 });
+    const game = new GameLib.Game({ size: o.size || 4, seed: seed >>> 0, rules: o.rules });
     const started = now();
     let nodes = 0;
     let moves = 0;
@@ -479,7 +514,7 @@
       moves: moves,
       score: game.score,
       maxTile: game.maxTile(),
-      won: game.maxTile() >= WIN_VALUE,
+      won: game.maxTile() >= (o.rules ? o.rules.winValue : WIN_VALUE),
       over: game.isGameOver(),
       nodes: nodes,
       ms: now() - started,

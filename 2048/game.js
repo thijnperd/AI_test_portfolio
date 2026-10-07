@@ -9,6 +9,19 @@
  * tile (2 or 4) is placed in a random empty cell.
  *
  * The RNG is seeded, so a seed reproduces the same sequence of tiles.
+ *
+ * ## Custom blocks
+ *
+ * Which merges are legal, what can spawn, and where the ladder's rungs sit are
+ * all rules a `Game` can be given: `options.rules` is a ruleset built by
+ * `blocks.js` (`BlocksLib.makeRules`). It is threaded through as two things
+ * rather than one, because they are needed in different places — a single
+ * `merge(a, b)` callback for the sliding, and a `spawnValue(r)` draw for the
+ * tile that appears afterwards.
+ *
+ * With no ruleset, or with the untouched default one (`rules.vanilla`), the
+ * callback stays null and every function below takes the original code path,
+ * so the vanilla game is exactly the game it was before blocks existed.
  */
 (function (global) {
   'use strict';
@@ -41,23 +54,31 @@
     { value: 8192, label: 'Endless' },
   ];
 
-  /* Every milestone at or below `maxTile`, ascending. */
-  function milestonesUpTo(maxTile) {
-    return MILESTONES.filter(function (m) { return m.value <= maxTile; });
+  /* Every milestone at or below `maxTile`, ascending. The ladder is normally a
+   * game's own (`game.ladder`), derived from the blocks in play; the constant
+   * here is the vanilla ladder and the default. */
+  function milestonesUpTo(maxTile, ladder) {
+    const rungs = ladder || MILESTONES;
+    return rungs.filter(function (m) { return m.value <= maxTile; });
   }
 
   /* The next rung above `maxTile`, or null once the ladder is climbed. */
-  function nextMilestone(maxTile) {
-    for (let i = 0; i < MILESTONES.length; i++) {
-      if (MILESTONES[i].value > maxTile) return MILESTONES[i];
+  function nextMilestone(maxTile, ladder) {
+    const rungs = ladder || MILESTONES;
+    for (let i = 0; i < rungs.length; i++) {
+      if (rungs[i].value > maxTile) return rungs[i];
     }
     return null;
   }
 
-  /* Slide one line of values toward index 0 and merge equal neighbours.
-   * Returns the resulting line, the score gained, and the output indices
-   * that came from a merge (used for the pop animation). */
-  function slideLine(line) {
+  /* Slide one line of values toward index 0 and merge the neighbours that can
+   * merge. Returns the resulting line, the score gained, and the output indices
+   * that came from a merge (used for the pop animation).
+   *
+   * `merge(a, b)` is the optional rules callback: it returns the tile the pair
+   * becomes, or 0 when the two do not merge at all. Without it, neighbours merge
+   * when they are equal — the vanilla rule — and the doubling is inlined. */
+  function slideLine(line, merge) {
     const nums = [];
     for (let i = 0; i < line.length; i++) {
       if (line[i] !== 0) nums.push(line[i]);
@@ -66,14 +87,19 @@
     const merged = [];
     let gained = 0;
     for (let i = 0; i < nums.length; i++) {
-      if (i + 1 < nums.length && nums[i] === nums[i + 1]) {
-        out.push(nums[i] * 2);
-        merged.push(out.length - 1);
-        gained += nums[i] * 2;
-        i++; // consume both tiles — a tile merges at most once per move
-      } else {
-        out.push(nums[i]);
+      if (i + 1 < nums.length) {
+        const value = merge
+          ? merge(nums[i], nums[i + 1])
+          : (nums[i] === nums[i + 1] ? nums[i] * 2 : 0);
+        if (value > 0) {
+          out.push(value);
+          merged.push(out.length - 1);
+          gained += value;
+          i++; // consume both tiles — a tile merges at most once per move
+          continue;
+        }
       }
+      out.push(nums[i]);
     }
     while (out.length < line.length) out.push(0);
     return { line: out, gained: gained, merged: merged };
@@ -124,8 +150,11 @@
    * the AI reuses one buffer per search level, and copying beats allocating a
    * fresh 4x4 per simulated move. When `out` is given, the returned `grid` is
    * that buffer, so it must be consumed before the next call with the same
-   * buffer. */
-  function applyMove(grid, size, dir, out) {
+   * buffer.
+   *
+   * `merge` is the optional custom-block rules callback described in
+   * `slideLine`. */
+  function applyMove(grid, size, dir, out, merge) {
     if (DIRECTIONS.indexOf(dir) === -1) throw new Error('Unknown direction: ' + dir);
     const lineCoords = lines(size, dir);
     const target = out || [];
@@ -150,7 +179,7 @@
       for (let i = 0; i < coords.length; i++) {
         values.push(outGrid[coords[i][1]][coords[i][0]]);
       }
-      const res = slideLine(values);
+      const res = slideLine(values, merge);
       for (let i = 0; i < coords.length; i++) {
         const x = coords[i][0];
         const y = coords[i][1];
@@ -181,7 +210,24 @@
       this.achievements = [];
       this.justAchieved = null;
       this.winSeen = false;
+      this.setRules(o.rules);
       this.reset();
+    }
+
+    /* Adopt a ruleset (or drop back to the vanilla rules with null).
+     *
+     * The board is untouched: what changes is which merges are legal, what can
+     * spawn, where the ladder's rungs sit, and the value that raises the win
+     * banner. A board that already sits at or above a newly lowered goal has
+     * its banner marked as seen, so editing the blocks mid-run cannot pop a
+     * "you won" screen over a game that was already won. */
+    setRules(rules) {
+      this.rules = rules || null;
+      this.merge = rules && !rules.vanilla ? rules.mergePair : null;
+      this.ladder = rules ? rules.ladder : MILESTONES;
+      this.winValue = rules ? rules.winValue : WIN_VALUE;
+      if (this.winValue > 0 && this.maxTile() >= this.winValue) this.winSeen = true;
+      return this;
     }
 
     reset() {
@@ -209,7 +255,7 @@
 
     /* The next rung to aim at for the current board. */
     nextGoal() {
-      return nextMilestone(this.maxTile());
+      return nextMilestone(this.maxTile(), this.ladder);
     }
 
     /* Dismiss the win banner without ending the run — the board stays playable. */
@@ -243,8 +289,8 @@
     collectMilestones() {
       const max = this.maxTile();
       let newest = null;
-      for (let i = 0; i < MILESTONES.length; i++) {
-        const value = MILESTONES[i].value;
+      for (let i = 0; i < this.ladder.length; i++) {
+        const value = this.ladder[i].value;
         if (value <= max && this.achievements.indexOf(value) === -1) {
           this.achievements.push(value);
           newest = value;
@@ -264,19 +310,21 @@
       return out;
     }
 
-    /* Place one tile (2 or 4) in a random empty cell. Returns its [x, y]. */
+    /* Place one spawning tile in a random empty cell. Returns its [x, y]. */
     addRandomTile() {
       const empties = this.emptyCells();
       if (empties.length === 0) return null;
       const pick = empties[Math.floor(this.rng() * empties.length)];
-      const value = this.rng() < 0.9 ? 2 : 4;
+      // One rng draw for the value either way, so a seeded run is reproducible
+      // whether or not the blocks are customised.
+      const value = this.rules ? this.rules.spawnValue(this.rng()) : (this.rng() < 0.9 ? 2 : 4);
       this.grid[pick[1]][pick[0]] = value;
       return pick;
     }
 
     /* Slide all tiles toward `dir`. Returns { moved, gained }. */
     move(dir) {
-      const res = applyMove(this.grid, this.size, dir);
+      const res = applyMove(this.grid, this.size, dir, null, this.merge);
       this.lastMerged = res.merged;
       this.lastSpawned = null;
       this.justAchieved = null;
@@ -285,7 +333,9 @@
       this.grid = res.grid;
       this.moveCount++;
       this.score += res.gained;
-      if (this.grid.some(function (row) { return row.indexOf(WIN_VALUE) !== -1; })) {
+      // `>=` rather than an exact match: a modifier can step straight over the
+      // goal, and the win should not depend on landing on it exactly.
+      if (this.winValue > 0 && this.maxTile() >= this.winValue) {
         this.won = true;
       }
       this.justAchieved = this.collectMilestones();
@@ -300,11 +350,18 @@
         for (let x = 0; x < n; x++) {
           const v = this.grid[y][x];
           if (v === 0) return true;
-          if (x + 1 < n && this.grid[y][x + 1] === v) return true;
-          if (y + 1 < n && this.grid[y + 1][x] === v) return true;
+          // The same predicate the sliding uses, so a board is never reported
+          // playable by a merge that `applyMove` would refuse.
+          if (x + 1 < n && this.merges(v, this.grid[y][x + 1])) return true;
+          if (y + 1 < n && this.merges(v, this.grid[y + 1][x])) return true;
         }
       }
       return false;
+    }
+
+    /* Whether two tiles sitting next to each other would merge. */
+    merges(a, b) {
+      return this.merge ? this.merge(a, b) > 0 : a === b;
     }
 
     isGameOver() {
