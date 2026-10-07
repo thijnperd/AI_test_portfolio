@@ -1,0 +1,297 @@
+/* Logic Puzzles — "instrument panel".
+ * The same room as the rest of the house: near-black tinted ground, one cool
+ * accent, mono type, hairline borders, no decoration that carries no
+ * information. The board is the exhibit; the 260px rail only steers it.
+ *
+ * One deliberate restraint: there is no second hue for mistakes. A cell that
+ * breaks a rule inverts into the accent (accent fill, dark ink), which reads as
+ * "wrong" without introducing a colour that is not in the house palette. */
+
+:root {
+  --bg: #0e0f13;
+  --panel: #15171d;
+  --panel-2: #1b1e26;
+  --line: #262a34;
+  --text: #e8eaf0;
+  --muted: #8b91a3;
+  --accent: #7aa2ff;
+  --radius: 8px;
+  --font: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* The `hidden` attribute must beat the layout `display` rules below: the UA
+   stylesheet's `[hidden] { display: none }` loses to any author rule, so
+   `.board { display: grid }` would keep a hidden element on screen. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--font);
+  overflow: hidden;
+}
+
+/* ---------- panel ---------- */
+
+.panel {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+
+.brand {
+  margin: 0 0 8px;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+}
+
+.brand span { color: var(--accent); }
+
+.intro { margin: 0 0 22px; }
+
+.small {
+  margin: 22px 0 10px;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.muted { color: var(--muted); }
+
+.hint {
+  margin-top: 20px;
+  line-height: 1.8;
+}
+
+#rules {
+  margin-top: 14px;
+  line-height: 1.7;
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+
+/* ---------- buttons ---------- */
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, filter 0.15s ease;
+}
+
+.btn:hover { border-color: var(--accent); }
+
+.btn:active { filter: brightness(0.94); }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0c10;
+  font-weight: 700;
+  grid-column: 1 / -1;
+}
+
+.btn-primary:hover { filter: brightness(1.1); }
+
+/* ---------- fields ---------- */
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.field select {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.check input { accent-color: var(--accent); }
+
+/* ---------- stage ---------- */
+
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 12px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.statusbar b {
+  color: var(--text);
+  margin-left: 6px;
+}
+
+.board-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+  overflow: hidden;
+  background: #0b0c10;
+}
+
+/* ---------- board ---------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 9), 1fr);
+  width: min(78vh, 100%);
+  max-width: 620px;
+  aspect-ratio: 1 / 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+/* A finished board is ringed in the accent — the one signal that the
+   exhibit is settled. */
+.board.done { border-color: var(--accent); }
+
+.board.nosolution { border-color: var(--muted); }
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--panel-2);
+  color: var(--accent);
+  border: none;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font: inherit;
+  font-size: clamp(11px, 2.6vh, 24px);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+/* the given numbers: quiet, immovable, brighter than what you type */
+.cell.given {
+  background: #12141a;
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* the last column and row of the grid own no separators */
+.cell.edge-right { border-right: none; }
+.cell.edge-bottom { border-bottom: none; }
+
+/* sudoku only: a heavier hairline where a 3x3 box ends */
+.cell.box-right { border-right-width: 2px; border-right-color: #333a4a; }
+.cell.box-bottom { border-bottom-width: 2px; border-bottom-color: #333a4a; }
+
+.cell.peer { background: #191d26; }
+.cell.selected { background: #223050; }
+
+/* a rule break inverts into the accent rather than inventing a second hue */
+.cell.bad {
+  background: var(--accent);
+  color: #0b0c10;
+}
+
+.candidates {
+  margin: 0;
+  min-height: 1.5em;
+  text-align: center;
+}
+
+.candidates b {
+  color: var(--text);
+  margin-left: 6px;
+}
+
+/* ---------- focus ---------- */
+
+.btn:focus-visible,
+.check input:focus-visible,
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The cell is only 30-odd pixels wide, so its ring is drawn inside the cell to
+   keep it visible without the ring overlapping the neighbouring values. */
+.cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- narrow screens ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .cell { transition: none; }
+}
+
+@media (max-width: 720px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .panel {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 45vh;
+  }
+
+  .board { width: min(60vh, 100%); }
+}

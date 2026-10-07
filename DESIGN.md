@@ -53,7 +53,8 @@ room, then give the project its own voice inside it.
 ## Tokens
 
 Copy these into `:root` verbatim. They are shared across the sibling projects
-(`game of life`, `maze generator and solver`, `boids`, `falling sand`, `2048`).
+(`game of life`, `logic puzzles`, `maze generator and solver`, `boids`,
+`falling sand`, `2048`).
 
 ```css
 :root {
@@ -111,6 +112,7 @@ consistent.
 |---|---|
 | `algorithmic art` | **Gallery at night** — deepest staging; the canvas is a lit exhibit, chrome nearly disappears. The **Fluvial Order** movement (`algorithmic art/PHILOSOPHY.md`) governs the artwork itself. |
 | `game of life` | **Instrument panel** — quiet, precise, observational. |
+| `logic puzzles` | **Instrument panel** — a rail steers two boards; the status bar reads out clues, filled cells and which deduction did the work. |
 | `maze generator and solver` | **Instrument panel** — a statusbar of measurements while the maze is drawn. |
 | `boids` | **Instrument panel** — motion is the subject; the panel only steers it. |
 | `falling sand` | **Instrument panel, pixelated matter** — one pixel per cell, crisp and material. |
@@ -155,8 +157,8 @@ consistent.
    heaviest control settings still capped to something reasonable.
 
 > **Known deviations to fix when touched:** none open. Reduced-motion is wired
-> everywhere it is needed — `2048`'s tile and ladder pops, and the raycaster's
-> flicker, blink, and gauge animations. The remaining sibling projects
-> (`game of life`, `maze generator and solver`, `boids`, `falling sand`) declare
-> no `animation` or `transition` at all, so there is nothing to guard until they
-> gain motion.
+> everywhere it is needed — `2048`'s tile and ladder pops, `logic puzzles`'s
+> button and cell transitions, and the raycaster's flicker, blink, and gauge
+> animations. The remaining sibling projects (`game of life`, `maze generator
+> and solver`, `boids`, `falling sand`) declare no `animation` or `transition`
+> at all, so there is nothing to guard until they gain motion.

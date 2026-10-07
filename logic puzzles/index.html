@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Logic Puzzles — Sudoku &amp; Binairo with a Solver</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Logic <span>Puzzles</span></h1>
+    <p class="muted intro">Sudoku and binary puzzles, with a solver that shows its working.</p>
+
+    <h2 class="small">Puzzle</h2>
+    <label class="field">
+      <span>Type</span>
+      <select id="puzzle">
+        <option value="sudoku" selected>Sudoku (9&times;9)</option>
+        <option value="binary">Binary puzzle</option>
+      </select>
+    </label>
+    <label class="field" id="size-field" hidden>
+      <span>Size</span>
+      <select id="size">
+        <option value="6">6 &times; 6</option>
+        <option value="8" selected>8 &times; 8</option>
+        <option value="10">10 &times; 10</option>
+        <option value="12">12 &times; 12</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Difficulty</span>
+      <select id="difficulty"></select>
+    </label>
+
+    <h2 class="small">Solve</h2>
+    <div class="buttons">
+      <button id="new-puzzle" class="btn btn-primary">New puzzle</button>
+      <button id="step" class="btn">Next step</button>
+      <button id="solve" class="btn">Solve all</button>
+      <button id="clear" class="btn">Clear moves</button>
+    </div>
+
+    <h2 class="small">Display</h2>
+    <label class="check"><input type="checkbox" id="mark" checked /> Highlight rule breaks</label>
+    <label class="check"><input type="checkbox" id="peers" checked /> Highlight row, column and box</label>
+
+    <p class="muted hint">
+      Every puzzle is generated with <b>exactly one solution</b>, then dug out
+      from a full board — <b>Next step</b> pays that back one deduction at a
+      time.<br /><br />
+      Keys: <b>N</b> new · <b>S</b> step · <b>F</b> solve all · <b>C</b> clear ·
+      <b>arrows</b> move · <b>0-9</b> type · <b>Delete</b> erase
+    </p>
+    <p class="muted hint" id="rules"></p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>Puzzle <b id="stat-puzzle">&mdash;</b></span>
+      <span>Size <b id="stat-size">&mdash;</b></span>
+      <span>Clues <b id="stat-clues">&mdash;</b></span>
+      <span>Filled <b id="stat-filled">&mdash;</b></span>
+      <span>Technique <b id="stat-technique">&mdash;</b></span>
+      <span>Seed <b id="stat-seed">&mdash;</b></span>
+      <span>Generated <b id="stat-time">&mdash;</b></span>
+      <span>Status <b id="stat-status">Ready</b></span>
+    </header>
+    <div class="board-wrap">
+      <div id="board" class="board" role="grid" aria-label="Puzzle board"></div>
+      <p id="candidates" class="candidates muted"></p>
+    </div>
+  </main>
+
+  <script src="sudoku.js"></script>
+  <script src="binairo.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

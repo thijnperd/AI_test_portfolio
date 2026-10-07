@@ -16,6 +16,7 @@ also runs in Node.js so its rules are covered by tests.
 | [falling sand](falling%20sand) | A particle sandbox with gravity, density, hydrostatic pressure and wet-sand repose. |
 | [fluid dynamics](fluid%20dynamics) | Incompressible Navier–Stokes (Stam's *Stable Fluids*) with coloured dye, vorticity confinement and buoyancy. |
 | [game of life](game%20of%20life) | An interactive Conway's Game of Life. |
+| [logic puzzles](logic%20puzzles) | Sudoku and the binary puzzle (Binairo), generated with a unique solution and solved one deduction at a time. |
 | [maze generator and solver](maze%20generator%20and%20solver) | Animated maze construction and pathfinding. |
 | [wave function collapse](wave%20function%20collapse) | A tilemap generator that grows maps from edge constraints alone, with backtracking. |
 | [2048](2048) | The sliding-tile puzzle, with a ladder of tile milestones that continues past 2048. |
@@ -32,14 +33,14 @@ cd boids && node test.js
 ```
 
 That covers `2048`, `analog horror raycaster`, `boids`, `falling sand`,
-`fluid dynamics`, `game of life`, `maze generator and solver`, and
-`wave function collapse`. (Wiekentwie is tested with PowerShell against a real
-Excel install; the algorithmic-art studio is verified in the browser.)
+`fluid dynamics`, `game of life`, `logic puzzles`, `maze generator and solver`,
+and `wave function collapse`. (Wiekentwie is tested with PowerShell against a
+real Excel install; the algorithmic-art studio is verified in the browser.)
 
 ## How the repository is organised
 
-Ten independent projects, plus the shared documents and tooling that keep them
-consistent:
+Eleven independent projects, plus the shared documents and tooling that keep
+them consistent:
 
 - [`ai_startup_instructions.md`](ai_startup_instructions.md) — the workflow for
   AI assistants working here, and [`AGENTS.md`](AGENTS.md) for tools that load

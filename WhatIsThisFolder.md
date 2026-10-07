@@ -83,6 +83,7 @@ file directly.
 
 - [algorithmic art](algorithmic%20art) — generative art experiments using HTML, CSS, and JavaScript.
 - [game of life](game%20of%20life) — interactive Conway's Game of Life simulation in HTML, CSS, and JavaScript, with Node tests for the rules.
+- [logic puzzles](logic%20puzzles) — Sudoku and the binary puzzle (Binairo) with a generator that proves every puzzle has exactly one solution and a solver that can be stepped one deduction at a time (naked and hidden singles, rule deductions, and a labelled guess when logic stalls), in HTML, CSS, and JavaScript, with Node tests for both cores.
 - [maze generator and solver](maze%20generator%20and%20solver) — animated maze construction and pathfinding visualizer in HTML, CSS, and JavaScript, with Node tests for the algorithms.
 - [Wiekentwie](Wiekentwie) — "Wie kent wie?": a Dutch Excel/VBA matchmaking app (offer a contact, search for people) documented in Dutch, with PowerShell edge-case tests that drive real Excel.
 - [boids](boids) — animated flocking simulation driven by three steering rules, in HTML, CSS, and JavaScript, with Node tests for the flocking core.

@@ -228,6 +228,9 @@ At the moment, these are the instruction-bearing files to check:
 - `game of life/(ai instructions).md`
 - `game of life/README.md`
 - `game of life/test.js` (tests are an executable specification for expected behavior)
+- `logic puzzles/(ai instructions).md`
+- `logic puzzles/README.md`
+- `logic puzzles/test.js` (tests are an executable specification for the Sudoku and binary-puzzle cores)
 - `maze generator and solver/(ai instructions).md`
 - `maze generator and solver/README.md`
 - `maze generator and solver/test.js` (tests are an executable specification for expected behavior)

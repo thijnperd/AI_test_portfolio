@@ -43,6 +43,9 @@ Paths in this index are relative to the repository root.
 | `game of life/(ai instructions).md` | Working anywhere in the Game of Life project. |
 | `game of life/README.md` | Working in Game of Life; use it to understand behavior, controls, and validation. |
 | `game of life/test.js` | Changing or debugging simulation behavior; tests specify the core's expected behavior. |
+| `logic puzzles/(ai instructions).md` | Working anywhere in the Logic Puzzles project. |
+| `logic puzzles/README.md` | Working in Logic Puzzles; use it to understand both puzzles, the algorithms, controls, and validation. |
+| `logic puzzles/test.js` | Changing or debugging either core (Sudoku generation/solving/uniqueness/deductions, or the binary puzzle's rules, solver and generator); tests specify the expected behavior. |
 | `maze generator and solver/(ai instructions).md` | Working anywhere in the Maze Generator and Solver project. |
 | `maze generator and solver/README.md` | Working in Maze Generator and Solver; use it to understand behavior, structure, and validation. |
 | `maze generator and solver/test.js` | Changing or debugging maze-generation or solver behavior; tests specify expected behavior. |
