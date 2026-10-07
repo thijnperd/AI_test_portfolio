@@ -20,6 +20,7 @@ also runs in Node.js so its rules are covered by tests.
 | [maze generator and solver](maze%20generator%20and%20solver) | Animated maze construction and pathfinding. |
 | [wave function collapse](wave%20function%20collapse) | A tilemap generator that grows maps from edge constraints alone, with backtracking. |
 | [2048](2048) | The sliding-tile puzzle, with custom blocks (divide, add, multiply — each with its own spawn rarity), a milestone ladder derived from the blocks in play, and an expectimax AI you can watch solve the board. |
+| [RobloxGame](RobloxGame) | A design kit, not code: three master prompts and the research behind them for building an original Roblox steal-and-collect game. |
 | [Wiekentwie](Wiekentwie) | A Dutch Excel/VBA app ("Wie kent wie?") for offering and searching contacts. |
 
 ## Running anything
@@ -39,7 +40,7 @@ real Excel install; the algorithmic-art studio is verified in the browser.)
 
 ## How the repository is organised
 
-Eleven independent projects, plus the shared documents and tooling that keep
+Twelve independent projects, plus the shared documents and tooling that keep
 them consistent:
 
 - [`ai_startup_instructions.md`](ai_startup_instructions.md) — the workflow for

@@ -72,6 +72,8 @@ Paths in this index are relative to the repository root.
 | `wave function collapse/(ai instructions).md` | Working anywhere in the Wave Function Collapse project. |
 | `wave function collapse/README.md` | Working in Wave Function Collapse; use it to understand the algorithm, controls, and validation. |
 | `wave function collapse/test.js` | Changing or debugging the solver (adjacency, entropy, propagation, backtracking, boundary rules); tests specify the expected behavior. |
+| `RobloxGame/(ai instructions).md` | Working anywhere in the Roblox Game design kit; it holds the rules that keep the prompts usable (originality constraints, anti-fabrication clauses, dated and sourced numbers) and the .md/.docx pairing rules. |
+| `RobloxGame/README.md` | Working in the Roblox Game design kit; it indexes which master prompt to use when, the order to use them in, and what was corrected in the folder. |
 
 ## Skills
 
