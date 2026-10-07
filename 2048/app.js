@@ -124,7 +124,23 @@
 
   const KINDS = BlocksLib.KINDS;
 
-  let config = loadConfig() || BlocksLib.DEFAULT_CONFIG;
+  /* A working copy, never the module's own constant. The editor writes back into
+   * `config.blocks`, and an aliased default would be edited in place — which is
+   * how "Reset" ends up resetting to whatever the last edit left behind. */
+  function copyConfig(source) {
+    let copy = null;
+    try {
+      copy = JSON.parse(JSON.stringify(source || BlocksLib.DEFAULT_CONFIG));
+    } catch (err) {
+      copy = null;   // a stored value that is not JSON at all
+    }
+    if (!copy || !Array.isArray(copy.blocks)) {
+      copy = JSON.parse(JSON.stringify(BlocksLib.DEFAULT_CONFIG));
+    }
+    return copy;
+  }
+
+  let config = copyConfig(loadConfig());
   let rules = BlocksLib.makeRules(config);
 
   /* A block's identity across the working config, the normalised ruleset, and
@@ -203,21 +219,36 @@
 
   const blockRows = [];
 
-  /* What share of the spawns each block takes, keyed the same way a row is. A
-   * block the rules dropped (a duplicate) simply has no share, and the row is
-   * shown as out of play rather than quietly edited into something else. */
+  /* One entry per row of the working config: what share of the spawns that block
+   * takes, and whether the rules kept it at all.
+   *
+   * It cannot be keyed by the block itself, because two rows are allowed to be
+   * the same block — the normaliser keeps the first of each and drops the rest,
+   * and a duplicate shares every property with the one that beat it. So the keys
+   * are walked in order, exactly as `normalize` walks them. */
   function spawnShares() {
     const shares = {};
     for (let i = 0; i < rules.spawns.length; i++) {
       shares[keyOf(rules.spawns[i].block)] = rules.spawns[i].share;
     }
-    return shares;
+    const out = [];
+    const seen = {};
+    for (let i = 0; i < config.blocks.length; i++) {
+      const key = keyOf(config.blocks[i]);
+      const first = !seen[key];
+      seen[key] = true;
+      out.push({ share: first ? shares[key] : undefined, duplicate: !first });
+    }
+    return out;
   }
 
-  function formatShare(share) {
-    if (share === undefined) return 'out of play';
-    if (share >= 0.999) return 'always';
-    const pct = share * 100;
+  /* Two different kinds of "not spawning": a weight of 0 is a choice, a dropped
+   * duplicate is the rules telling you so, and they should not read alike. */
+  function formatShare(info) {
+    if (info.duplicate) return 'out of play';
+    if (info.share === undefined) return 'never';
+    if (info.share >= 0.999) return 'always';
+    const pct = info.share * 100;
     return (pct < 1 ? '<1' : String(Math.round(pct))) + '%';
   }
 
@@ -269,12 +300,12 @@
     range.setAttribute('aria-label', 'How often this block spawns');
     const shareLabel = document.createElement('b');
     shareLabel.className = 'block-share';
-    shareLabel.textContent = formatShare(shares[keyOf(block)]);
+    shareLabel.textContent = formatShare(shares[index]);
     rarity.appendChild(caption);
     rarity.appendChild(range);
     rarity.appendChild(shareLabel);
 
-    if (shares[keyOf(block)] === undefined) li.classList.add('inactive');
+    if (shares[index].duplicate) li.classList.add('inactive');
 
     const top = document.createElement('div');
     top.className = 'block-top';
@@ -284,6 +315,8 @@
     li.appendChild(top);
     li.appendChild(rarity);
 
+    // A kind change is structural — it changes what the number field means and
+    // what the tile will look like — so that one rebuilds the list.
     kind.addEventListener('change', function () {
       editBlock(index, function (b) {
         const next = KINDS.filter(function (k) { return k.id === kind.value; })[0];
@@ -292,7 +325,7 @@
           return { kind: 'number', value: previous, weight: b.weight };
         }
         return { kind: next.id, amount: previous, weight: b.weight };
-      });
+      }, true);
     });
 
     amount.addEventListener('input', function () {
@@ -302,28 +335,30 @@
         if (b.kind === 'number') { b.value = value; return b; }
         b.amount = value;
         return b;
-      });
+      }, false);
     });
 
     range.addEventListener('input', function () {
       editBlock(index, function (b) {
         b.weight = parseInt(range.value, 10) || 0;
         return b;
-      });
+      }, false);
     });
 
     remove.addEventListener('click', function () {
       config.blocks.splice(index, 1);
-      applyBlocks();
+      applyBlocks(true);
     });
 
     return li;
   }
 
-  function renderBlocks() {
+  /* Everything that can change without the list itself changing: each row's
+   * share, the note, and the two buttons. Separate from `renderBlocks` because
+   * a weight nudge must not rebuild the row it was typed into — the focus, and
+   * with it a slider drag, would go with the old element. */
+  function refreshBlocks() {
     const shares = spawnShares();
-    el.blocks.textContent = '';
-    blockRows.length = 0;
 
     // The last number block cannot be removed: a board that can never spawn a
     // value can never make a move.
@@ -333,15 +368,15 @@
     }
     const onlyNumber = numbers.length === 1 ? numbers[0] : -1;
 
-    for (let i = 0; i < config.blocks.length; i++) {
-      const row = buildBlockRow(config.blocks[i], i, shares);
-      if (i === onlyNumber) {
-        const btn = row.querySelector('.block-remove');
-        btn.disabled = true;
-        btn.title = 'A board needs at least one number to spawn';
-      }
-      el.blocks.appendChild(row);
-      blockRows.push(row);
+    for (let i = 0; i < blockRows.length && i < config.blocks.length; i++) {
+      const row = blockRows[i];
+      row.querySelector('.block-share').textContent = formatShare(shares[i]);
+      row.classList.toggle('inactive', shares[i].duplicate);
+      const btn = row.querySelector('.block-remove');
+      btn.disabled = i === onlyNumber;
+      btn.title = i === onlyNumber
+        ? 'A board needs at least one number to spawn'
+        : 'Remove this block';
     }
 
     el.blocksNoteInline.textContent = rules.vanilla
@@ -354,44 +389,61 @@
     el.blockReset.disabled = rules.vanilla;
   }
 
+  /* Build the list from scratch. Only a change to the list — a block added,
+   * removed, or turned into a different kind — needs this. */
+  function renderBlocks() {
+    const shares = spawnShares();
+    el.blocks.textContent = '';
+    blockRows.length = 0;
+    for (let i = 0; i < config.blocks.length; i++) {
+      const row = buildBlockRow(config.blocks[i], i, shares);
+      el.blocks.appendChild(row);
+      blockRows.push(row);
+    }
+    refreshBlocks();
+  }
+
   /* Edit one block in place and re-derive everything that depends on it. */
-  function editBlock(index, change) {
+  function editBlock(index, change, rebuild) {
     config.blocks[index] = change(config.blocks[index]);
-    applyBlocks();
+    applyBlocks(rebuild);
   }
 
   /* Rebuild the ruleset from the working config, hand it to the running game,
    * and redraw the ladder it implies. The board itself is never touched: an edit
    * changes which merges are legal and what can spawn from here on, not what is
    * already on the grid. */
-  function applyBlocks() {
+  function applyBlocks(rebuild) {
     rules = BlocksLib.makeRules(config);
     saveConfig({ blocks: config.blocks });
     game.setRules(rules);
     buildLadder(rules.ladder);
-    renderBlocks();
+    if (rebuild) renderBlocks();
+    else refreshBlocks();
     render();
   }
 
-  /* Add a block that is not obviously a duplicate of one already in play. */
+  /* Add a block that is not obviously a duplicate of one already in play: the
+   * next power of two nobody uses yet, so a new row is a real second option
+   * rather than a duplicate the rules will quietly drop. */
   function addBlock() {
     const taken = {};
     for (let i = 0; i < config.blocks.length; i++) taken[keyOf(config.blocks[i])] = true;
     for (let value = 8; value <= 8192; value *= 2) {
       if (!taken['n' + value]) {
         config.blocks.push({ kind: 'number', value: value, weight: 5 });
-        applyBlocks();
+        applyBlocks(true);
         return;
       }
     }
     config.blocks.push({ kind: 'divide', amount: 2, weight: 5 });
-    applyBlocks();
+    applyBlocks(true);
   }
 
   el.blockAdd.addEventListener('click', addBlock);
   el.blockReset.addEventListener('click', function () {
-    config = { blocks: BlocksLib.normalize(BlocksLib.DEFAULT_CONFIG).blocks };
-    applyBlocks();
+    config = copyConfig(BlocksLib.DEFAULT_CONFIG);
+    applyBlocks(true);
   });
 
   /* -------- board -------- */
@@ -828,14 +880,14 @@
      * browser check can prove a rarity edit really changes the spawn table,
      * and that a rescaled ladder lands on reachable values. */
     setBlocks: function (next) {
-      config = next;
-      applyBlocks();
+      config = copyConfig(next);
+      applyBlocks(true);
       return rungs.map(function (r) { return r.value; });
     },
     blocks: function () {
       return {
         config: JSON.parse(JSON.stringify(config)),
-        shares: spawnShares(),
+        shares: spawnShares(),   // one entry per row, in the same order
         vanilla: rules.vanilla,
         notes: rules.notes.slice(),
         ladder: rungs.map(function (r) { return r.value; }),

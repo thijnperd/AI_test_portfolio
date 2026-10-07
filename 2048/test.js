@@ -539,6 +539,31 @@ test('normalize fixes what a saved or hand-typed config can get wrong', function
   assert.strictEqual(BlocksLib.normalize({ blocks: [] }).blocks.length, 2);
 });
 
+test('building rules never mutates the config it was handed', function () {
+  // The interface keeps a working copy of the block config and edits it in
+  // place. If anything in here wrote back into its input, it would be editing
+  // the module's own default, and "Reset" would reset to the edited value.
+  const source = { blocks: [
+    { kind: 'number', value: 2, weight: 90 },
+    { kind: 'number', value: 4, weight: 10 },
+    { kind: 'divide', amount: 2, weight: 5 },
+  ] };
+  const before = JSON.stringify(source.blocks);
+  const rules = BlocksLib.makeRules(source);
+  assert.strictEqual(JSON.stringify(source.blocks), before, 'makeRules left the config alone');
+  assert.strictEqual(rules.vanilla, false);
+
+  BlocksLib.normalize(source);
+  assert.strictEqual(JSON.stringify(source.blocks), before, 'and so did normalize');
+
+  const defaultBefore = JSON.stringify(BlocksLib.DEFAULT_CONFIG.blocks);
+  BlocksLib.makeRules(BlocksLib.DEFAULT_CONFIG);
+  BlocksLib.normalize(null);
+  assert.strictEqual(JSON.stringify(BlocksLib.DEFAULT_CONFIG.blocks), defaultBefore,
+    'the shared default is still the default');
+  assert.strictEqual(rules.blocks[2].tile, -1, 'the config the click handlers use is one block per drop');
+});
+
 test('normalize never leaves a board with nothing to spawn', function () {
   const n = BlocksLib.normalize({ blocks: [
     { kind: 'number', value: 2, weight: 0 },
