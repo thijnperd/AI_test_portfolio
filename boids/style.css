@@ -81,6 +81,8 @@ body {
 
 .btn:hover { border-color: var(--accent); }
 
+.btn:active { filter: brightness(0.94); }
+
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -165,6 +167,16 @@ body {
 }
 
 #canvas { display: block; }
+
+/* ---------- focus ---------- */
+
+.btn:focus-visible,
+.check input:focus-visible,
+.field select:focus-visible,
+.field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ---------- narrow screens ---------- */
 

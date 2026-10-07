@@ -20,3 +20,4 @@ The full rule lives in
 - 2026-10-06 22:16 — DeepSeek V4.1 Flash — Added the `fluid dynamics` and `wave function collapse` projects and the `differential-growth` and `sandpile` sketches, plus the laptop performance rule and this model activity log.
 - 2026-10-06 22:31 — DeepSeek V4.1 Flash — Published this workspace to GitHub as the public `thijnperd/AI_test_portfolio` repository, rewriting history to keep the git-ignored Wiekentwie workbook and its contact data local.
 - 2026-10-06 22:36 — DeepSeek V4.1 Flash — Added the commit-and-push rule to all four instruction entry points, so finished and verified work is always pushed to the public GitHub remote.
+- 2026-10-07 10:46 — DeepSeek V4.1 Flash — Audited the whole repo (8 Node suites and 9 browser projects) and closed the one open DESIGN.md gap: keyboard focus now paints the house accent ring, plus a matching press state, in boids, falling sand, game of life, maze generator and solver, and 2048.
