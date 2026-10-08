@@ -77,7 +77,8 @@ Paths in this index are relative to the repository root.
 | `dither studio/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation. |
 | `dither studio/SOURCES.md` | Adding or changing a feature, algorithm, palette or numeric table in Dither Studio; it records which published work or open-source tool each one came from, and the divergences we chose deliberately. |
 | `dither studio/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. |
-| `dither studio/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, pipeline); tests specify the expected behavior. |
+| `dither studio/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, temporal rules, pipeline); tests specify the expected behavior. |
+| `dither studio/video.js` | Working on Dither Studio's video mode (frame source, playback clock with frame dropping, working-size cap, WebM recording); it is browser-only and deliberately knows nothing about dithering. |
 
 ## Skills
 

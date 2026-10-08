@@ -434,6 +434,8 @@
     { id: 'sepia', name: 'Sepia ink', colors: [[43, 32, 24], [245, 222, 179]] },
     { id: 'cyan-ink', name: 'Cyan ink', colors: [[2, 26, 45], [120, 230, 255]] },
     { id: 'blueprint', name: 'Blueprint ink', colors: [[8, 24, 64], [214, 236, 255]] },
+    { id: 'matrix', name: 'Matrix green ink', colors: [[3, 16, 6], [132, 255, 150]] },
+    { id: 'ice', name: 'Ice ink', colors: [[6, 12, 34], [216, 240, 255]] },
   ];
 
   const PALETTE_BY_ID = new Map(PALETTES.map(function (p) { return [p.id, p]; }));
@@ -735,6 +737,9 @@
     { id: 'ign', name: 'Interleaved Gradient Noise', group: 'Stochastic', kind: 'formula', formula: 'ign' },
     { id: 'r2', name: 'R2 Low-Discrepancy', group: 'Stochastic', kind: 'formula', formula: 'r2' },
     { id: 'crosshatch', name: 'Crosshatch', group: 'Stochastic', kind: 'formula', formula: 'crosshatch' },
+    { id: 'smooth-diffusion', name: 'Smooth Diffusion', group: 'Structure-aware', kind: 'structure', mode: 'flow' },
+    { id: 'rain', name: 'Rain Streaks', group: 'Structure-aware', kind: 'structure', mode: 'rain' },
+    { id: 'dot-field', name: 'Dot Field (edge dots)', group: 'Structure-aware', kind: 'structure', mode: 'dots' },
     { id: 'yliluoma-2', name: 'Yliluoma mix: 2 colours', group: 'Mixing', kind: 'yliluoma', option: 2 },
     { id: 'yliluoma-greedy', name: 'Yliluoma mix: quick', group: 'Mixing', kind: 'yliluoma', option: 3 },
     { id: 'yliluoma-polished', name: 'Yliluoma mix: deep', group: 'Mixing', kind: 'yliluoma', option: 4 },
@@ -792,18 +797,140 @@
   // order of calls is the pixel order, so it stays reproducible), blue noise
   // from the tiled void-and-cluster mask, clustered noise from a value-noise
   // field, formulas from their closed form.
-  function maskValue(algo, x, y, settings, rng, mat, m) {
+  // `i` is the pixel index into the screen (structure screens are prebuilt),
+  // and `screenShift` slides tile-based screens by whole pixels — that is what
+  // makes an ordered screen crawl during video playback.
+  function maskValue(algo, x, y, i, settings, rng, mat, m, screen) {
+    const sy = settings.screenShift | 0;
+    const px = x + sy, py = y + sy;
     switch (algo.kind) {
-      case 'ordered': return mat[(y % m) * m + (x % m)];
+      case 'ordered': return mat[(py % m) * m + (px % m)];
       case 'noise': return rng() * 255;
-      case 'bluenoise': return blueNoiseValue(x, y, settings.seed, algo.size || 16);
-      case 'clustered-noise': return valueNoise(x, y, settings.seed, algo.cell || 4);
+      case 'bluenoise': return blueNoiseValue(px, py, settings.seed, algo.size || 16);
+      case 'clustered-noise': return valueNoise(px, py, settings.seed, algo.cell || 4);
+      case 'structure': return screen[i];
       case 'formula':
-        if (algo.formula === 'ign') return ignValue(x, y);
-        if (algo.formula === 'r2') return r2Value(x, y);
-        return crosshatchValue(x, y);
+        if (algo.formula === 'ign') return ignValue(px, py);
+        if (algo.formula === 'r2') return r2Value(px, py);
+        return crosshatchValue(px, py);
       default: return 128;
     }
+  }
+
+  /* --- structure-aware screens ---------------------------------------- */
+
+  // These screens read the image instead of just tiling over it. The base noise
+  // is stretched along the image's own contours — the tangent of the iso-luma
+  // direction, sampled either side of each pixel, a short line-integral
+  // convolution — so dots flow with the shading rather than fighting it. Two
+  // more knobs push it around: vertical streaks (rain) and an edge bias that
+  // opens the screen up at edges while flats stay clean (a subject made of
+  // dots). Each mode sets its own character; the sliders push it.
+  //
+  // Cost is bounded: one noise field per render, then a fixed number of nearest
+  // samples per pixel (at most 1 + 2*10 + 2*10), no per-pixel allocation.
+  const SCREEN_EDGE_REF = 26;   // gradient magnitude that counts as an edge
+  const SCREEN_CELL_MIN = 1;
+  const SCREEN_CELL_MAX = 12;
+
+  function buildScreen(data, w, h, algo, settings) {
+    const n = w * h;
+    const cfg = settings.screen || {};
+    const mode = algo.mode || 'flow';
+    const cell = clampInt(Math.round(num(cfg.smooth, 3)), SCREEN_CELL_MIN, SCREEN_CELL_MAX);
+    const flow = clampInt(Math.round(num(cfg.flow, 60)), 0, 100);
+    const streak = clampInt(Math.round(num(cfg.streak, 0)), 0, 100);
+    // The mode sets the character; the sliders push it.
+    const flowAmt = (mode === 'rain' ? Math.min(flow, 25) : flow) / 100;
+    const streakAmt = (mode === 'rain' ? Math.max(streak, 55) : streak) / 100;
+    const seed = settings.seed >>> 0;
+
+    // Two octaves of value noise: clumps at the cell size plus a third-size
+    // detail octave, which is what keeps the pattern from looking like blobs.
+    const field = new Float32Array(n);
+    const detail = Math.max(1, Math.round(cell / 3));
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const a = valueNoise(x, y, seed, cell);
+        const b = valueNoise(x, y, seed ^ 0x9e3779b1, detail);
+        field[y * w + x] = (a * 0.65 + b * 0.35) / 255;
+      }
+    }
+
+    const lumaIn = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      lumaIn[i] = luma(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]) / 255;
+    }
+
+    // Samples are read straight out of `field` with the index arithmetic
+    // inlined: this loop runs 10+ times per pixel, and a closure call per
+    // sample was most of the screen's cost.
+    const maxX = w - 1, maxY = h - 1;
+    function sampleAt(fx, fy) {
+      let x = (fx + 0.5) | 0;
+      let y = (fy + 0.5) | 0;
+      if (x < 0) x = 0; else if (x > maxX) x = maxX;
+      if (y < 0) y = 0; else if (y > maxY) y = maxY;
+      return field[y * w + x];
+    }
+
+    const out = new Float32Array(n);
+    // Samples per pixel are bounded by a budget, not just by the sliders: a
+    // 1600 px working image would otherwise cost 41 neighbour samples for every
+    // one of its pixels. Six million samples is about 100 ms of work here. The
+    // two reaches shrink together, so the look keeps its proportions and only
+    // loses a little of its tail.
+    const budget = 6e6 / Math.max(1, n);
+    const wantFlow = 1 + Math.round(flowAmt * 9);
+    const wantStreak = 1 + Math.round(streakAmt * 9);
+    const want = 1 + (flowAmt > 0 ? wantFlow : 0) * 2 + (streakAmt > 0 ? wantStreak : 0) * 2;
+    const shrink = want > budget ? budget / want : 1;
+    const flowReach = flowAmt > 0 ? Math.max(1, Math.round(wantFlow * shrink)) : 0;
+    const streakReach = streakAmt > 0 ? Math.max(1, Math.round(wantStreak * shrink)) : 0;
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      const up = (y > 0 ? y - 1 : 0) * w;
+      const down = (y < h - 1 ? y + 1 : h - 1) * w;
+      for (let x = 0; x < w; x++) {
+        const i = row + x;
+        const gx = (lumaIn[row + (x < w - 1 ? x + 1 : w - 1)] - lumaIn[row + (x > 0 ? x - 1 : 0)]) * 255;
+        const gy = (lumaIn[down + x] - lumaIn[up + x]) * 255;
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        let v = field[i];
+        if (flowAmt > 0) {
+          // Tangent to the contour: perpendicular to the gradient.
+          const len = mag || 1;
+          const tx = -gy / len, ty = gx / len;
+          let sum = v, count = 1;
+          for (let k = 1; k <= flowReach; k++) {
+            const o = k * 1.5;
+            sum += sampleAt(x + tx * o, y + ty * o) + sampleAt(x - tx * o, y - ty * o);
+            count += 2;
+          }
+          v = v * (1 - flowAmt) + (sum / count) * flowAmt;
+        }
+        if (streakAmt > 0) {
+          let sum = v, count = 1;
+          for (let k = 1; k <= streakReach; k++) {
+            const o = k * 1.5;
+            sum += sampleAt(x, y + o) + sampleAt(x, y - o);
+            count += 2;
+          }
+          v = v * (1 - streakAmt) + (sum / count) * streakAmt;
+        }
+        const edge = Math.min(1, mag / SCREEN_EDGE_REF);
+        // Flats keep a calm screen; edges open it up. The dots mode goes much
+        // further: flats collapse towards a plain threshold, so the subject
+        // reads as dots on the edges and clean paper inside.
+        const gain = mode === 'dots' ? 0.12 + 1.15 * edge : mode === 'rain' ? 0.7 + 0.6 * edge : 0.85 + 0.5 * edge;
+        // Held just inside the ends: a screen that reached 0 or 255 would make
+        // pure-black or pure-white patches flip once the strength knob pushed
+        // it, which is the one thing every other screen here guarantees.
+        const m = 128 + (v - 0.5) * 255 * gain;
+        out[i] = m < 1 ? 1 : m > 254 ? 254 : m;
+      }
+    }
+    return out;
   }
 
   // `strength` scales every mask away from mid-grey: at 0 the screen is a plain
@@ -1033,7 +1160,7 @@
   /* --- mono path ------------------------------------------------------ */
 
   // lumaIn: Float32Array (one per pixel). Returns Uint8ClampedArray of 0/255.
-  function ditherMono(lumaIn, w, h, algo, settings, rng) {
+  function ditherMono(lumaIn, w, h, algo, settings, rng, screen) {
     const bias = 128 - settings.threshold;  // threshold = exposure bias
     const k = settings.ditherStrength / 100;
     const n = w * h;
@@ -1041,14 +1168,14 @@
     const kind = algo.kind;
 
     if (kind === 'threshold' || kind === 'ordered' || kind === 'noise' || kind === 'bluenoise' ||
-        kind === 'clustered-noise' || kind === 'formula') {
+        kind === 'clustered-noise' || kind === 'formula' || kind === 'structure') {
       const mat = kind === 'ordered' ? matrixFor(algo.id) : null;
       const m = mat ? Math.round(Math.sqrt(mat.length)) : 0;
       for (let y = 0; y < h; y++) {
         const row = y * w;
         for (let x = 0; x < w; x++) {
           const i = row + x;
-          const limit = scaleMask(maskValue(algo, x, y, settings, rng, mat, m), k);
+          const limit = scaleMask(maskValue(algo, x, y, i, settings, rng, mat, m, screen), k);
           out[i] = lumaIn[i] + bias > limit ? 255 : 0;
         }
       }
@@ -1163,7 +1290,7 @@
   const ORDERED_JITTER = 0.3;  // mask amplitude for palette mode, in 0..255
   const LUT_BITS = 4;          // per-channel target bins for the mixing plans
 
-  function ditherPalette(f, w, h, algo, settings, rng) {
+  function ditherPalette(f, w, h, algo, settings, rng, screen) {
     const palette = PALETTE_BY_ID.get(settings.palette) || PALETTE_BY_ID.get('bw');
     const colors = palette.colors;
     const lut = paletteLut(palette.id);
@@ -1183,14 +1310,14 @@
     }
 
     if (kind === 'ordered' || kind === 'noise' || kind === 'bluenoise' ||
-        kind === 'clustered-noise' || kind === 'formula') {
+        kind === 'clustered-noise' || kind === 'formula' || kind === 'structure') {
       const mat = kind === 'ordered' ? matrixFor(algo.id) : null;
       const m = mat ? Math.round(Math.sqrt(mat.length)) : 0;
       const amp = ORDERED_JITTER * k;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
-          const d = (maskValue(algo, x, y, settings, rng, mat, m) - 128) * amp;
+          const d = (maskValue(algo, x, y, i, settings, rng, mat, m, screen) - 128) * amp;
           write(i, snapIndex(lut, f[i * 3] + d, f[i * 3 + 1] + d, f[i * 3 + 2] + d));
         }
       }
@@ -1322,6 +1449,14 @@
     { id: 'deadpixels', name: 'Dead pixels', hint: 'stuck black and white pixels' },
     { id: 'vignette', name: 'Vignette', hint: 'darkens the corners' },
     { id: 'crt', name: 'CRT bloom & warp', hint: 'barrel warp plus a bright bloom pass' },
+    {
+      id: 'ripple', name: 'Ripple & swirl', hint: 'displaces pixels along rings, a vortex or noise',
+      modes: [{ id: 'ripple', name: 'Rings' }, { id: 'swirl', name: 'Swirl' }, { id: 'turbulence', name: 'Turbulence' }],
+    },
+    {
+      id: 'starfield', name: 'Starfield', hint: 'sparse glowing dust and stars',
+      modes: [{ id: 'stars', name: 'Stars (dark areas)' }, { id: 'dust', name: 'Dust (everywhere)' }],
+    },
   ];
   const GLITCH_BY_ID = new Map(GLITCHES.map(function (g) { return [g.id, g]; }));
   // The stack position and the effect's own index both fold into each effect's
@@ -1586,6 +1721,60 @@
     }
   }
 
+  // Displacement: rings out from the centre, a vortex, or a noise field. Reading
+  // each destination from a displaced source is what lets a still melt the way
+  // an analogue tape eats a frame.
+  function glitchRipple(d, w, h, amount, rng, mode) {
+    const src = d.slice();
+    const k = amount / 100;
+    const cx = w / 2, cy = h / 2;
+    const lambda = Math.max(6, Math.round(Math.min(w, h) * (0.2 - 0.12 * k)));
+    const amp = Math.max(1, Math.round(Math.min(w, h) * 0.07 * k));
+    const phase = rng() * Math.PI * 2;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sx, sy;
+        if (mode === 'swirl') {
+          const dx = x - cx, dy = y - cy;
+          const r = Math.sqrt(dx * dx + dy * dy) || 1;
+          const a = (amp * 2.5) / Math.max(4, r);
+          const c = Math.cos(a), s = Math.sin(a);
+          sx = cx + dx * c - dy * s;
+          sy = cy + dx * s + dy * c;
+        } else if (mode === 'turbulence') {
+          sx = x + (valueNoise(x, y, 0x51ed, 12) / 255 - 0.5) * amp * 3.2;
+          sy = y + (valueNoise(x, y, 0x2b17, 12) / 255 - 0.5) * amp * 3.2;
+        } else {
+          const dx = x - cx, dy = y - cy;
+          const r = Math.sqrt(dx * dx + dy * dy) || 1;
+          const o = Math.sin((r / lambda) * Math.PI * 2 + phase) * amp;
+          sx = x + (dx / r) * o;
+          sy = y + (dy / r) * o;
+        }
+        const si = (clampInt(Math.round(sy), 0, h - 1) * w + clampInt(Math.round(sx), 0, w - 1)) * 4;
+        const di = (y * w + x) * 4;
+        d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2];
+      }
+    }
+  }
+
+  // Dust that glows: single bright pixels for the glow pass to bloom. In stars
+  // mode they only take over the dark, which is what puts a figure in a night
+  // sky instead of a snowstorm.
+  function glitchStarfield(d, w, h, amount, rng, mode) {
+    const density = (amount / 100) * (mode === 'dust' ? 0.006 : 0.002);
+    const cells = w * h;
+    for (let i = 0; i < cells; i++) {
+      if (rng() > density) continue;
+      const di = i * 4;
+      if (mode !== 'dust' && luma(d[di], d[di + 1], d[di + 2]) > 96) continue;
+      const gain = 0.5 + rng() * 0.5;
+      d[di] = clamp255(d[di] + 230 * gain);
+      d[di + 1] = clamp255(d[di + 1] + 240 * gain);
+      d[di + 2] = clamp255(d[di + 2] + 255 * gain);
+    }
+  }
+
   const GLITCH_FNS = {
     aberration: glitchAberration,
     blocks: glitchBlocks,
@@ -1598,6 +1787,8 @@
     deadpixels: glitchDeadPixels,
     vignette: glitchVignette,
     crt: glitchCRT,
+    ripple: glitchRipple,
+    starfield: glitchStarfield,
   };
 
   /* ------------------------------------------------------------------ */
@@ -1661,6 +1852,8 @@
     seed: 20261008,
     ditherStrength: 100,
     serpentine: false,
+    screen: { smooth: 3, flow: 60, streak: 0 },
+    screenShift: 0,
     alphaMode: 'matte',
     toneMap: 'none',
     toneInk: [0, 0, 0],
@@ -1687,6 +1880,13 @@
       seed: (s.seed === undefined ? DEFAULT_SETTINGS.seed : s.seed) >>> 0,
       ditherStrength: clampInt(Math.round(num(s.ditherStrength, DEFAULT_SETTINGS.ditherStrength)), 0, 200),
       serpentine: !!s.serpentine,
+      screen: {
+        smooth: clampInt(Math.round(num((s.screen || {}).smooth, DEFAULT_SETTINGS.screen.smooth)), SCREEN_CELL_MIN, SCREEN_CELL_MAX),
+        flow: clampInt(Math.round(num((s.screen || {}).flow, DEFAULT_SETTINGS.screen.flow)), 0, 100),
+        streak: clampInt(Math.round(num((s.screen || {}).streak, DEFAULT_SETTINGS.screen.streak)), 0, 100),
+      },
+      // Runtime only: video playback slides tile screens frame by frame.
+      screenShift: clampInt(Math.round(num(s.screenShift, 0)), 0, 1000000),
       alphaMode: ALPHA_MODES.indexOf(s.alphaMode) >= 0 ? s.alphaMode : DEFAULT_SETTINGS.alphaMode,
       toneMap: TONE_MAP_BY_ID.has(s.toneMap) ? s.toneMap : DEFAULT_SETTINGS.toneMap,
       toneInk: colorTriple(s.toneInk, DEFAULT_SETTINGS.toneInk),
@@ -1717,6 +1917,32 @@
 
   function num(v, fallback) {
     return typeof v === 'number' && isFinite(v) ? v : fallback;
+  }
+
+  // --- video: the temporal rules -------------------------------------------
+  // Playing a clip turns the seed into a time axis, and there are three honest
+  // ways to do that (the classic temporal-dither choices made explicit):
+  //   freeze  — one screen for the whole clip: the calm, stable look.
+  //   shimmer — a fresh seed per frame, so stochastic screens boil in place
+  //             while the overall tone holds (the palette's mixes average out).
+  //   crawl   — tile screens slide a pixel per frame, the classic ordered
+  //             "walking" screen (structure screens are rebuilt instead, and
+  //             ignore the shift).
+  // The stride is the golden-ratio hash constant, so consecutive frames land
+  // far apart in the generator's stream and never fall into a short cycle.
+  const TEMPORAL_MODES = ['freeze', 'shimmer', 'crawl'];
+
+  function temporalSettings(settings, frameIndex, mode) {
+    const merged = mergeSettings(settings);
+    const index = Math.max(0, Math.round(num(frameIndex, 0)));
+    if (mode === 'shimmer') {
+      merged.seed = (merged.seed + Math.imul(index + 1, 0x9e3779b1)) >>> 0;
+    } else if (mode === 'crawl') {
+      // The same bound mergeSettings applies, because this assignment happens
+      // after that clamp rather than through it.
+      merged.screenShift = clampInt(index, 0, 1000000);
+    }
+    return merged;
   }
 
   function now() {
@@ -1757,12 +1983,15 @@
 
     const algo = ALGORITHM_BY_ID.get(settings.algorithm) || ALGORITHM_BY_ID.get('floyd-steinberg');
     const rng = makeRng(settings.seed);
+    // Structure-aware screens read the image, so they are built once, here, at
+    // the chunk resolution the dither itself runs at.
+    const screen = algo.kind === 'structure' ? buildScreen(data, dw, dh, algo, settings) : null;
     let rgb;
     if (settings.palette === 'bw') {
       const ln = dw * dh;
       const gray = new Float32Array(ln);
       for (let i = 0; i < ln; i++) gray[i] = luma(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
-      const dithered = ditherMono(gray, dw, dh, algo, settings, rng);
+      const dithered = ditherMono(gray, dw, dh, algo, settings, rng, screen);
       rgb = new Uint8ClampedArray(ln * 3);
       for (let i = 0; i < ln; i++) {
         rgb[i * 3] = dithered[i];
@@ -1770,7 +1999,7 @@
         rgb[i * 3 + 2] = dithered[i];
       }
     } else {
-      rgb = ditherPalette(data, dw, dh, algo, settings, rng);
+      rgb = ditherPalette(data, dw, dh, algo, settings, rng, screen);
     }
 
     const colors = countColorsRGB(rgb);
@@ -1853,6 +2082,7 @@
     makeRng: makeRng,
     bayerRanks: bayerRanks,
     matrixFor: matrixFor,
+    buildScreen: buildScreen,
     clusteredDotRanks: clusteredDotRanks,
     spiralRanks: spiralRanks,
     lineRanks: lineRanks,
@@ -1883,6 +2113,8 @@
     countColors: countColorsRGB,
     // the pipeline
     mergeSettings: mergeSettings,
+    temporalSettings: temporalSettings,
+    TEMPORAL_MODES: TEMPORAL_MODES,
     process: process,
   };
 

@@ -126,6 +126,11 @@ body {
   font-size: 12px;
 }
 
+/* Video: the record button reads as a transport control, not a toggle. */
+#video-record { border-color: #6b3b3b; }
+
+#video-record:hover { border-color: #c2564f; color: #ffd0cc; }
+
 /* ---------- fields ---------- */
 
 .field {

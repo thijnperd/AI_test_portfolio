@@ -11,7 +11,7 @@ also runs in Node.js so its rules are covered by tests.
 | Project | What it is |
 |---|---|
 | [algorithmic art](algorithmic%20art) | A zero-dependency generative-art studio: a gallery of seeded, reproducible sketches with PNG export. |
-| [dither studio](dither%20studio) | A print shop for pixels: 43 dithering algorithms, 22 palettes, tone maps, alpha mattes, an 11-effect glitch stack and text mode, with the whole core under Node tests. |
+| [dither studio](dither%20studio) | A print shop for pixels and video: 46 dithering algorithms (including three structure-aware screens that read the image's own contours), 24 palettes, tone maps, alpha mattes, a 13-effect glitch stack, text mode and live video with temporal dithering and WebM recording, with the whole core under Node tests. |
 | [analog horror raycaster](analog%20horror%20raycaster) | "Static Halls" — a first-person raycasting horror game with procedural fog, a stalking presence, a shard shop and two endings. |
 | [boids](boids) | Reynolds' flocking, from three steering rules with adjustable weights. |
 | [falling sand](falling%20sand) | A particle sandbox with gravity, density, hydrostatic pressure and wet-sand repose. |

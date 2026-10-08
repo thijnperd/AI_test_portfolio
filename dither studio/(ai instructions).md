@@ -1,10 +1,11 @@
 # AI instructions for the Dither Studio project
 
-A zero-dependency browser image-dithering tool: load an image, choose one of 43
-dither algorithms and one of 22 palettes, grade it, ink it, stack glitch
-effects, print it as pixels or as characters, export a PNG. The core is DOM-free
-so it runs in Node for tests. World/voice: **"instrument panel, print shop"** —
-dark press console, the canvas is a proof sheet.
+A zero-dependency browser image-dithering tool: load an image *or a video*,
+choose one of 46 dither algorithms and one of 24 palettes, grade it, ink it,
+stack glitch effects, print it as pixels or as characters, export a PNG (or a
+WebM recording). The core is DOM-free so it runs in Node for tests. World/voice:
+**"instrument panel, print shop"** — dark press console, the canvas is a proof
+sheet.
 
 ## Before working
 
@@ -21,9 +22,10 @@ dark press console, the canvas is a proof sheet.
 
 | File | Responsibility |
 |---|---|
-| `dither.js` | Everything algorithmic and DOM-free: seeded RNG, screen generation (Bayer, clustered-dot, halftone/spiral, line, diagonal, checks, void-and-cluster, blue noise), the 43 algorithms, Yliluoma mixing plans and their cache, palettes and their nearest-colour lookup table, tone maps, adjustments, alpha handling, the glitch stack, glow, colour counting, and `process()`. Exports `DitherLib` for the browser and `module.exports` for Node. |
-| `app.js` | Canvas presentation and UI wiring: renders preview vs full, builds the rail from `DitherLib.ALGORITHMS` / `PALETTES` / `GLITCHES` / `TONE_MAPS`, text mode, loads images (picker/drop/paste/data URL), zoom/pan/compare, presets, random recipes, clipboard, PNG/`.txt` export, and the `window.__dither` debug hook. |
-| `index.html` | UI structure and script load order (`dither.js` before `app.js`). |
+| `dither.js` | Everything algorithmic and DOM-free: seeded RNG, screen generation (Bayer, clustered-dot, halftone/spiral, line, diagonal, checks, void-and-cluster, blue noise), the structure-aware screens, the 46 algorithms, Yliluoma mixing plans and their cache, palettes and their nearest-colour lookup table, tone maps, adjustments, alpha handling, the glitch stack, glow, colour counting, the video temporal rules, and `process()`. Exports `DitherLib` for the browser and `module.exports` for Node. |
+| `video.js` | Browser-only video mode: the frame source (video file, webcam, or a generated clip for checks), the playback clock with frame dropping, the working-size cap, and WebM recording. It knows nothing about dithering — `app.js` hands it an `onFrame(imageData, frameIndex)` callback. |
+| `app.js` | Canvas presentation and UI wiring: renders preview vs full, builds the rail from `DitherLib.ALGORITHMS` / `PALETTES` / `GLITCHES` / `TONE_MAPS`, text mode, loads images (picker/drop/paste/data URL), zoom/pan/compare, presets, random recipes, clipboard, PNG/`.txt`/WebM export, video wiring, and the `window.__dither` debug hook. |
+| `index.html` | UI structure and script load order (`dither.js`, `video.js`, then `app.js`). |
 | `style.css` | Page layout and presentation; the `:root` tokens are copied verbatim from `../DESIGN.md`. |
 | `SOURCES.md` | Provenance: which published work or open-source tool each feature, table and palette came from, plus the divergences that were chosen deliberately. |
 | `test.js` | Node tests for the core, not browser UI tests. |
@@ -87,6 +89,26 @@ dark press console, the canvas is a proof sheet.
 12. **Nothing expensive on load.** The 32×32 blue-noise mask and the mixing-plan
     cache are built lazily, on first use, and cached per palette/bin. Do not
     move mask generation into module load.
+13. **Structure screens are image-dependent and budgeted.** `buildScreen` reads
+    the *downscaled* RGB buffer, so it is built once per render at chunk
+    resolution (never once per pixel loop). Its neighbour sampling is bounded by
+    a sample budget (`6e6 / pixels`, both reaches shrinking together) so a large
+    working image cannot blow the time budget, and the output stays inside
+    `1..254` — a screen that reached 0 or 255 would flip pure patches once the
+    strength knob pushed it. The three mode names (`flow`, `rain`, `dots`) set
+    the character; the sliders only push it.
+14. **The temporal rules live in the core.** `temporalSettings(settings, frame,
+    mode)` is the only place a video frame's recipe differs from the still one:
+    `freeze` leaves it alone, `shimmer` strides the seed by the golden-ratio
+    constant, `crawl` slides `screenShift` (clamped, because that assignment
+    happens *after* `mergeSettings`' own clamp). The same frame index must
+    always produce the same recipe — that is what makes playback and recording
+    reproducible.
+15. **Video drops frames instead of queueing.** The loop in `video.js` renders at
+    most one frame per slot, counts the frames it missed when a render overran,
+    and caps the working frame at 720 px. `app.js` must not render a still over
+    a playing video (`render()` returns early while `video.playing`), or slider
+    drags would fight the frame loop for the canvas.
 
 ## Extending
 
@@ -94,12 +116,13 @@ dark press console, the canvas is a proof sheet.
 
 1. Add an entry to `ALGORITHMS` in `dither.js` with `id`, `name`, `group` and
    `kind` — one of `threshold`, `ordered`, `noise`, `bluenoise`,
-   `clustered-noise`, `formula`, `yliluoma`, `diffusion`. Ordered algorithms
-   need a matrix from `matrixFor()` (add a generator next to `lineRanks` and the
-   others if the screen is new); formula algorithms need a branch in
-   `maskValue`; diffusion algorithms need a table in `KERNELS`
-   (`weights: [dy, dx, numerator]` + `div`) or a special case like
-   `riemersma`/`ostromoukhov`.
+   `clustered-noise`, `formula`, `structure`, `yliluoma`, `diffusion`. Ordered
+   algorithms need a matrix from `matrixFor()` (add a generator next to
+   `lineRanks` and the others if the screen is new); formula algorithms need a
+   branch in `maskValue`; structure algorithms need a `mode` handled in
+   `buildScreen` (`flow`, `rain`, `dots` are the existing characters); diffusion
+   algorithms need a table in `KERNELS` (`weights: [dy, dx, numerator]` + `div`)
+   or a special case like `riemersma`/`ostromoukhov`.
 2. Both paths must handle it (`ditherMono` and `ditherPalette`), including the
    serpentine sweep and the strength scaling where they apply.
 3. Add tests: registration and family counts, output shape, tone reproduction on
@@ -131,6 +154,16 @@ Add an entry to `TONE_MAPS` with `ink` and `paper` RGB triples (the `custom`
 entry is the only one without colours and reads the user's pickers). Nothing
 else needs changing: the rail, the core stage and text mode's paper/type all
 read the list.
+
+### Add a video feature
+
+Video is deliberately split: `video.js` owns the source, the clock, the caps and
+recording; `app.js` owns what a frame *means* (`renderVideoFrame`,
+`videoSettingsFor`). Add per-frame behaviour by extending the settings the shell
+builds (or `temporalSettings` when it is a temporal rule), not by teaching
+`video.js` about palettes. Any new hook that the browser checks drive should be
+mounted on `window.__dither` (`videoTick`, `videoRecord`, …) and listed in the
+README's verification section.
 
 ### Add a preset
 
@@ -184,11 +217,36 @@ bash tools/check.sh "dither studio/index.html" --eval "(async function(){ \
   return { sharpen: a.levels, keepLevels: b.count }; })()"
 ```
 
+Video mode needs no file and no camera in a check — the generated clip drives
+real frames:
+
+```bash
+# play, measure and record, all inside one eval (the harness accepts one)
+bash tools/check.sh "dither studio/index.html" --eval "(async function(){ \
+  const d = window.__dither; d.videoSynthetic(480, 320); d.videoPlay(); \
+  await new Promise(r => setTimeout(r, 1500)); const played = d.videoStats(); \
+  const rec = await d.videoRecord(1200); d.videoPause(); \
+  return { frames: played.drawn, dropped: played.dropped, rec: rec }; })()"
+
+# the temporal rules, isolated on one clip frame (both modes, same picture)
+bash tools/check.sh "dither studio/index.html" --eval "(function(){ \
+  const d = window.__dither; d.videoSynthetic(480, 320); \
+  d.setSetting('algorithm','random-noise'); \
+  d.videoTemporal('freeze'); d.videoTick(1, 4); const a = d.canvasSample(128); \
+  d.videoTemporal('shimmer'); d.videoTick(1, 4); const b = d.canvasSample(128); \
+  return { reshuffled: a.filter((v, i) => Math.abs(v - b[i]) > 32).length, \
+           settings: d.videoSettings(7) }; })()"
+```
+
 `window.__dither` exposes `stats()`, `applyPreset(id)`, `setSetting(path,
 value)`, `randomize()`, `exportTxt()`, `setText(on, ramp, size)`, `textGrid()`,
-`alphaStats()`, `canvasColors()`, `deriveGlitches()` and `loadDataURL(url,
-name)`. Prefer it over reading the DOM, and check for console errors (the
-harness fails on any).
+`alphaStats()`, `canvasColors()`, `canvasSample(n)`, `canvasHash()`,
+`deriveGlitches()`, `loadDataURL(url, name)` and the video hooks
+`videoSynthetic(w, h)`, `videoTick(count, atFrame)`, `videoPlay()`,
+`videoPause()`, `videoTemporal(mode)`, `videoSettings(frame)`, `videoStats()`,
+`videoRecord(ms)`, `videoStop()`. Prefer it over reading the DOM, and check for
+console errors (the harness fails on any). Note the harness takes only the last
+`--eval`, so chain multi-step checks inside one async expression.
 
 Keep `README.md` claims aligned with what the source and tests actually
 guarantee, keep the project dependency-free (`index.html` must open from

@@ -64,6 +64,24 @@ entries in a plan can sit far from the target on a sparse palette, so mixing on
 a photo has a granular texture. That is the family's character, not a defect —
 pick a dense palette or the two-colour variant for a calmer screen.
 
+## Structure-aware screens (added with the third press)
+
+| Source | What it informed |
+|---|---|
+| [Pang, Barkan & Mendlovic — "Structure-aware halftoning" (2008)](https://www.researchgate.net/publication/224303793_Structure-aware_halftoning) | The idea behind the whole group: a screen that is generated *from the image* (edge strength and direction) instead of tiled over it, so the texture follows the shading. Our implementation is our own: a two-octave value-noise field bent along the image's contours. |
+| Cabral & Leedom — "Imaging vector fields using line integral convolution" (SIGGRAPH 1993) | The stretch-along-contours step: sample the noise field either side of each pixel along the gradient's tangent (a short LIC walk), which is what makes the screen flow with the shading. |
+| The classic swirl / ripple / wave displacement (as documented for e.g. [ImageMagick's `-swirl` and `-wave`](https://usage.imagemagick.org/transform/)) | The `ripple` glitch (concentric displacement about a seeded centre) and `wave`'s smooth displacement. |
+| Standard procedural star-field practice (seeded scattered stars, optional motion streaks and a radial glow) | The `starfield` glitch. Constructed here; a star field has no canonical published table. |
+
+## Video, temporal dithering and recording
+
+| Source | What it informed |
+|---|---|
+| [Dither Boy — Studio AAA](https://studioaaa.com/product/dither-boy/) (product page) | The last untouched item on the feature checklist this project measures itself against: video and animated output. |
+| The temporal-dithering literature for frame-rate-modulated displays (a pattern that is re-generated per frame so the eye averages it) | The three rules made explicit in `temporalSettings`: **freeze**, **shimmer** (a new seed per frame, so stochastic screens boil while tone holds) and **crawl** (the ordered screen slides a pixel per frame — the demoscene / Yliluoma-style walking screen). |
+| [MDN — `HTMLCanvasElement.captureStream()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream) and [`MediaRecorder`](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder) | WebM recording of the dithered canvas, with VP9 → VP8 → default codec fallback and a 60 s guard against runaway memory. |
+| [MDN — `HTMLVideoElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement) and [`getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) | The frame sources: a user-picked video file, the webcam, or the generated clip the browser checks drive (which needs no codec, so verification stays offline and deterministic). |
+
 ## Palette data
 
 | Source | Palette |
@@ -81,7 +99,8 @@ pick a dense palette or the two-colour variant for a calmer screen.
 | Nintendo Virtual Boy (4 reds) | `virtualboy` |
 | [PICO-8](https://www.lexaloffle.com/pico-8.php) official palette | `pico8` |
 | [gruvbox](https://github.com/morhetz/gruvbox) theme colours | `gruvbox` |
-| Constructed inks and levels | `gray-4/8/16` (2/3/4-bit ramps), `amber`, `sepia`, `cyan-ink`, `blueprint`, and the tone maps in `TONE_MAPS` |
+| Constructed inks and levels | `gray-4/8/16` (2/3/4-bit ramps), `amber`, `sepia`, `cyan-ink`, `blueprint`, `ice`, and the tone maps in `TONE_MAPS` |
+| The digital rain of *The Matrix* (a two-ink green phosphor look, as reproduced across countless shader ports) | `matrix` — constructed here from the look, not copied from any implementation |
 
 ## What is not from anywhere
 

@@ -19,6 +19,33 @@
     <input type="file" id="file" accept="image/*" hidden />
     <p class="muted mini">…or drop an image on the stage, or paste with <b>Ctrl+V</b>.</p>
 
+    <h2 class="small">Video</h2>
+    <div class="buttons">
+      <button id="video-webcam" class="btn">Webcam</button>
+      <button id="video-open" class="btn">Open video…</button>
+    </div>
+    <input type="file" id="video-file" accept="video/*" hidden />
+    <div class="buttons buttons-1">
+      <button id="video-toggle" class="btn btn-primary" disabled>Play</button>
+    </div>
+    <label class="field" id="video-fps-row" hidden>
+      <span>Frame rate <em id="video-fps-value">12</em> fps</span>
+      <input type="range" id="video-fps" min="1" max="30" step="1" value="12" />
+    </label>
+    <label class="field" id="video-temporal-row" hidden>
+      <span>Temporal dither</span>
+      <select id="video-temporal">
+        <option value="freeze">Frozen — one stable screen</option>
+        <option value="shimmer" selected>Shimmer — reshuffle every frame</option>
+        <option value="crawl">Crawl — the screen scrolls</option>
+      </select>
+    </label>
+    <div class="buttons buttons-1" id="video-record-row" hidden>
+      <button id="video-record" class="btn">● Record WebM</button>
+    </div>
+    <p class="muted mini" id="video-note">Every algorithm, ink and glitch runs live
+      over the frame. A heavy recipe drops frames rather than slowing down.</p>
+
     <h2 class="small">Dither</h2>
     <label class="field">
       <span>Algorithm</span>
@@ -39,6 +66,18 @@
     <label class="field">
       <span>Strength <em id="strength-value">100</em>%</span>
       <input type="range" id="strength" min="0" max="200" step="1" value="100" />
+    </label>
+    <label class="field" id="smooth-row" hidden>
+      <span>Smoothness <em id="smooth-value">3</em></span>
+      <input type="range" id="smooth" min="1" max="12" step="1" value="3" />
+    </label>
+    <label class="field" id="flow-row" hidden>
+      <span>Flow <em id="flow-value">60</em></span>
+      <input type="range" id="flow" min="0" max="100" step="1" value="60" />
+    </label>
+    <label class="field" id="streak-row" hidden>
+      <span>Streak <em id="streak-value">0</em></span>
+      <input type="range" id="streak" min="0" max="100" step="1" value="0" />
     </label>
     <label class="check"><input type="checkbox" id="serpentine" /> Serpentine sweep (error diffusion)</label>
     <label class="field">
@@ -206,6 +245,7 @@
   </main>
 
   <script src="dither.js"></script>
+  <script src="video.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

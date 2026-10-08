@@ -30,6 +30,9 @@
     strength: $('strength'), strengthValue: $('strength-value'),
     serpentine: $('serpentine'),
     seed: $('seed'), seedValue: $('seed-value'), reseed: $('reseed'),
+    smooth: $('smooth'), smoothValue: $('smooth-value'), smoothRow: $('smooth-row'),
+    flow: $('flow'), flowValue: $('flow-value'), flowRow: $('flow-row'),
+    streak: $('streak'), streakValue: $('streak-value'), streakRow: $('streak-row'),
     black: $('black'), blackValue: $('black-value'),
     white: $('white'), whiteValue: $('white-value'),
     gamma: $('gamma'), gammaValue: $('gamma-value'),
@@ -55,6 +58,11 @@
     statStatus: $('stat-status'), statZoom: $('stat-zoom'),
     zoomOut: $('zoom-out'), zoomFit: $('zoom-fit'), zoomIn: $('zoom-in'), compare: $('compare'),
     exportScale: $('export-scale'), export: $('export'),
+    videoWebcam: $('video-webcam'), videoOpen: $('video-open'), videoFile: $('video-file'),
+    videoToggle: $('video-toggle'), videoFps: $('video-fps'), videoFpsValue: $('video-fps-value'),
+    videoFpsRow: $('video-fps-row'), videoTemporal: $('video-temporal'),
+    videoTemporalRow: $('video-temporal-row'), videoRecord: $('video-record'),
+    videoRecordRow: $('video-record-row'), videoNote: $('video-note'),
     wrap: $('canvas-wrap'), canvas: $('canvas'),
   };
 
@@ -71,6 +79,7 @@
     zoom: null,         // null = fit, otherwise a scale
     panning: null,
     rafPending: false,
+    videoOn: false,     // frames come from video.js rather than a still image
   };
 
   // The glitch stack lives in the panel as a reorderable list, so the UI state
@@ -107,6 +116,9 @@
     { input: el.pixelSize, label: el.pixelSizeValue, path: 'pixelSize', fmt: plain },
     { input: el.threshold, label: el.thresholdValue, path: 'threshold', fmt: plain },
     { input: el.strength, label: el.strengthValue, path: 'ditherStrength', fmt: plain },
+    { input: el.smooth, label: el.smoothValue, path: 'screen.smooth', fmt: plain },
+    { input: el.flow, label: el.flowValue, path: 'screen.flow', fmt: plain },
+    { input: el.streak, label: el.streakValue, path: 'screen.streak', fmt: plain },
     { input: el.black, label: el.blackValue, path: 'adjustments.black', fmt: plain },
     { input: el.white, label: el.whiteValue, path: 'adjustments.white', fmt: plain },
     { input: el.gamma, label: el.gammaValue, path: 'adjustments.gamma', fmt: fixed2 },
@@ -187,6 +199,14 @@
     el.textExportRow.hidden = !text.on;
   }
 
+  // The screen sliders only mean something to the structure-aware screens.
+  function syncScreenRows() {
+    const structure = algorithmById(state.settings.algorithm).kind === 'structure';
+    el.smoothRow.hidden = !structure;
+    el.flowRow.hidden = !structure;
+    el.streakRow.hidden = !structure;
+  }
+
   function syncUI() {
     const s = state.settings;
     el.algorithm.value = s.algorithm;
@@ -208,6 +228,7 @@
     el.thresholdRow.hidden = s.palette !== 'bw';
     el.canvas.classList.toggle('alpha-on', s.alphaMode !== 'matte');
     syncTextUI();
+    syncScreenRows();
     rebuildGlitchValues();
   }
 
@@ -459,6 +480,24 @@
       toneMap: 'cyanotype',
       glow: { radius: 3, intensity: 45 },
     } },
+    // The three structure-aware looks, ready to compare against a photo.
+    { id: 'wire', name: 'Wired Portrait', settings: {
+      algorithm: 'smooth-diffusion', palette: 'bw', pixelSize: 1,
+      screen: { smooth: 7, flow: 100, streak: 30 },
+      adjustments: { contrast: 1.2, gamma: 1.05, sharpen: 0.4 },
+    } },
+    { id: 'matrixrain', name: 'Matrix Rain', settings: {
+      algorithm: 'rain', palette: 'matrix', pixelSize: 1,
+      screen: { smooth: 5, flow: 10, streak: 100 },
+      adjustments: { contrast: 1.15, brightness: 1.03 },
+      glow: { radius: 3, intensity: 45 },
+    } },
+    { id: 'icedots', name: 'Ice Dot Field', settings: {
+      algorithm: 'dot-field', palette: 'ice', pixelSize: 1,
+      screen: { smooth: 6, flow: 0, streak: 0 },
+      adjustments: { contrast: 1.2, gamma: 1.08 },
+      glow: { radius: 3, intensity: 55 },
+    } },
   ];
 
   function buildPresetSelect() {
@@ -498,6 +537,10 @@
   }
 
   function render(full) {
+    // During video playback the frame loop owns the canvas; a still render here
+    // would only be overwritten by the next frame. (A tickOnce render, an
+    // export or a paused frame still goes through the normal path.)
+    if (state.videoOn && video && video.playing) return;
     const source = full ? state.source : state.preview;
     if (!source) return;
     state.settings.glitches = deriveGlitches();
@@ -698,6 +741,7 @@
   /* ------------------------------------------------------------------ */
 
   function setSource(imageData, name, capped) {
+    videoStop();
     state.original = imageData;
     state.source = { data: imageData.data, width: imageData.width, height: imageData.height };
     state.name = name;
@@ -907,7 +951,7 @@
   }
 
   function exportPNG() {
-    if (!state.source) return;
+    if (!state.source && !state.videoOn) return;
     render(true);
     const scale = parseInt(el.exportScale.value, 10) || 1;
     const out = document.createElement('canvas');
@@ -934,7 +978,7 @@
   }
 
   function exportTXT() {
-    if (!state.source) return;
+    if (!state.source && !state.videoOn) return;
     render(true);
     const grid = textGrid(state.result);
     const body = grid.lines.join('\n') + '\n';
@@ -943,7 +987,7 @@
   }
 
   function copyPNG() {
-    if (!state.source) return;
+    if (!state.source && !state.videoOn) return;
     render(true);
     el.canvas.toBlob(function (blob) {
       if (!blob) return;
@@ -1024,6 +1068,7 @@
 
     el.algorithm.addEventListener('change', function () {
       state.settings.algorithm = el.algorithm.value;
+      syncScreenRows();
       render(true);
     });
 
@@ -1214,7 +1259,194 @@
     window.addEventListener('resize', applyZoom);
 
     syncUI();
+    bindVideo();
     loadDemo();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* video mode                                                         */
+  /* ------------------------------------------------------------------ */
+
+  // video.js owns the source, the clock and the recorder; this shell decides
+  // what a frame *means*. The temporal choice is the interesting part:
+  //   freeze  — one screen for the whole clip (the honest, calm look)
+  //   shimmer — a fresh seed per frame, so stochastic screens boil and the
+  //             tone stays put: a still idea of the palette's mixes
+  //   crawl   — the screen itself slides by a pixel per frame (tile screens)
+  const video = (window.DitherVideo && window.DitherVideo.create)
+    ? window.DitherVideo.create({
+      onFrame: renderVideoFrame,
+      onStatus: videoStatus,
+      getCanvas: function () { return el.canvas; },
+    })
+    : null;
+  const videoState = { temporal: 'shimmer', ready: false };
+
+  function videoStatus(text) {
+    el.videoNote.textContent = text;
+  }
+
+  // The recipe travels per frame, so sliders and presets keep working during
+  // playback; only the temporal rule varies frame to frame. That rule lives in
+  // the core (D.temporalSettings), where node test.js can cover it.
+  function videoSettingsFor(frameIndex) {
+    const s = state.settings;
+    const next = {};
+    for (const key in s) next[key] = s[key];
+    next.adjustments = {};
+    for (const key in s.adjustments) next.adjustments[key] = s.adjustments[key];
+    next.screen = { smooth: s.screen.smooth, flow: s.screen.flow, streak: s.screen.streak };
+    next.glow = { radius: s.glow.radius, intensity: s.glow.intensity };
+    next.glitches = deriveGlitches();
+    return D.temporalSettings(next, frameIndex, videoState.temporal);
+  }
+
+  // The status bar during video mode: frame, rate, drops, and a REC flag. The
+  // render loop calls it every frame, and the transport controls call it too so
+  // stopping a recording does not leave a stale "REC" behind.
+  function videoStatusLine() {
+    if (!video) return;
+    const s = video.stats();
+    el.statFile.textContent = 'video frame ' + Math.max(0, s.frame - 1);
+    el.statStatus.textContent = 'Video ' + s.fps + ' fps' +
+      (s.dropped ? ' · ' + s.dropped + ' dropped' : '') +
+      (s.recording ? ' · REC' : '');
+  }
+
+  function renderVideoFrame(imageData, frameIndex) {
+    const settings = videoSettingsFor(frameIndex);
+    const t0 = performance.now();
+    const res = D.process(imageData, settings);
+    state.result = res;
+    if (el.canvas.width !== res.width || el.canvas.height !== res.height) {
+      el.canvas.width = res.width;
+      el.canvas.height = res.height;
+      applyZoom();
+    }
+    el.canvas.classList.toggle('alpha-on', settings.alphaMode !== 'matte');
+    if (!(text.on && drawTextResult(res))) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.putImageData(toImageData(res), 0, 0);
+    }
+    updateStats(res, true);
+    videoStatusLine();
+    return performance.now() - t0;
+  }
+
+  function videoShowRows(show) {
+    el.videoFpsRow.hidden = !show;
+    el.videoTemporalRow.hidden = !show;
+    el.videoRecordRow.hidden = !show;
+    el.videoToggle.disabled = !show;
+  }
+
+  async function startVideo(kind, file) {
+    if (!video) {
+      videoStatus('Video mode needs video.js, which did not load.');
+      return false;
+    }
+    try {
+      if (kind === 'webcam') await video.webcam();
+      else await video.load(file);
+    } catch (err) {
+      videoStatus('Video could not start: ' + ((err && err.message) || 'unknown error'));
+      return false;
+    }
+    videoState.ready = true;
+    state.videoOn = true;
+    state.name = kind === 'webcam' ? 'webcam' : 'video';
+    state.zoom = null;
+    videoShowRows(true);
+    el.videoToggle.textContent = 'Play';
+    video.setFps(el.videoFps.value);
+    videoState.temporal = el.videoTemporal.value;
+    video.tickOnce();          // paint frame zero right away, even while paused
+    applyZoom();
+    return true;
+  }
+
+  function startSynthetic(width, height) {
+    if (!video) return null;
+    video.synthetic(width, height);
+    videoState.ready = true;
+    state.videoOn = true;
+    state.name = 'video';
+    state.zoom = null;
+    videoShowRows(true);
+    el.videoToggle.textContent = 'Play';
+    video.setFps(el.videoFps.value);
+    videoState.temporal = el.videoTemporal.value;
+    return video.tickOnce();
+  }
+
+  function videoStop() {
+    if (!state.videoOn) return;
+    state.videoOn = false;
+    videoState.ready = false;
+    if (video) {
+      if (video.recording) video.stopRecording();
+      video.release();
+    }
+    el.videoToggle.textContent = 'Play';
+    videoShowRows(false);
+    videoStatus('Pick a source above to run video through the press.');
+  }
+
+  function bindVideo() {
+    if (!video) {
+      videoStatus('Video mode needs video.js, which did not load.');
+      return;
+    }
+    video.setFps(el.videoFps.value);
+    el.videoOpen.addEventListener('click', function () { el.videoFile.click(); });
+    el.videoFile.addEventListener('change', function () {
+      const file = el.videoFile.files && el.videoFile.files[0];
+      if (file) startVideo('file', file);
+      el.videoFile.value = '';
+    });
+    el.videoWebcam.addEventListener('click', function () {
+      videoStatus('Asking for the webcam…');
+      startVideo('webcam');
+    });
+    el.videoToggle.addEventListener('click', function () {
+      const playing = video.toggle();
+      el.videoToggle.textContent = playing ? 'Pause' : 'Play';
+      videoStatusLine();
+    });
+    el.videoFps.addEventListener('input', function () {
+      el.videoFpsValue.textContent = String(video.setFps(el.videoFps.value));
+    });
+    el.videoTemporal.addEventListener('change', function () {
+      videoState.temporal = el.videoTemporal.value;
+      videoStatus(videoState.temporal === 'freeze'
+        ? 'Frozen: one screen for the whole clip.'
+        : videoState.temporal === 'crawl'
+          ? 'Crawl: tile screens slide a pixel per frame.'
+          : 'Shimmer: a fresh screen every frame.');
+    });
+    el.videoRecord.addEventListener('click', function () {
+      if (video.recording) {
+        el.videoRecord.disabled = true;
+        video.stopRecording().then(function (out) {
+          el.videoRecord.disabled = false;
+          el.videoRecord.textContent = '● Record WebM';
+          if (out && out.blob && out.blob.size) {
+            download(out.blob, 'dither-video.webm');
+            videoStatus('Saved dither-video.webm · ' + out.seconds + ' s · ' +
+              Math.round(out.blob.size / 1024) + ' KB');
+          } else {
+            videoStatus('The recording came out empty.');
+          }
+          videoStatusLine();
+        });
+        return;
+      }
+      if (video.startRecording()) {
+        el.videoRecord.textContent = '■ Stop & save';
+      } else {
+        videoStatus('Recording is not supported in this browser.');
+      }
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -1290,6 +1522,72 @@
       const set = new Set();
       for (let i = 0; i < data.length; i += 4) set.add((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
       return set.size;
+    },
+    // Sampled canvas greys, so a check can measure how much two frames differ.
+    canvasSample: function (count) {
+      const data = ctx.getImageData(0, 0, el.canvas.width, el.canvas.height).data;
+      const total = el.canvas.width * el.canvas.height;
+      const n = Math.max(1, count || 64);
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const p = Math.floor((i + 0.5) * total / n);
+        out.push(data[p * 4]);
+      }
+      return out;
+    },
+    // The settings a given video frame is dithered with (the temporal rule).
+    videoSettings: function (frame) {
+      const s = videoSettingsFor(frame);
+      return { seed: s.seed, screenShift: s.screenShift, baseSeed: state.settings.seed };
+    },
+    // A cheap fingerprint of what is on the canvas, for comparing frames.
+    canvasHash: function () {
+      const data = ctx.getImageData(0, 0, el.canvas.width, el.canvas.height).data;
+      let h = 2166136261;
+      for (let i = 0; i < data.length; i += 97) h = Math.imul(h ^ data[i], 16777619);
+      return h >>> 0;
+    },
+
+    // --- video mode (needs video.js; the generated clip needs no file) -----
+    videoSynthetic: function (w, h) { return startSynthetic(w, h); },
+    videoTick: function (count, atFrame) {
+      if (!video) return null;
+      let stats = null;
+      const n = Math.max(1, count || 1);
+      for (let i = 0; i < n; i++) stats = video.tickOnce(atFrame);
+      return stats;
+    },
+    videoPlay: function () {
+      if (!video) return false;
+      video.play();
+      el.videoToggle.textContent = 'Pause';
+      return video.playing;
+    },
+    videoPause: function () {
+      if (!video) return false;
+      video.pause();
+      el.videoToggle.textContent = 'Play';
+      return video.playing;
+    },
+    videoTemporal: function (mode) {
+      videoState.temporal = mode;
+      el.videoTemporal.value = mode;
+      return videoState.temporal;
+    },
+    videoStop: videoStop,
+    videoStats: function () { return video ? video.stats() : null; },
+    // Record for `ms` of wall clock and report what came out, without a download.
+    videoRecord: function (ms) {
+      if (!video || !video.startRecording()) return Promise.resolve(null);
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          video.stopRecording().then(function (out) {
+            el.videoRecord.textContent = '● Record WebM';
+            videoStatusLine();
+            resolve(out ? { seconds: out.seconds, bytes: out.blob.size, type: out.blob.type } : null);
+          });
+        }, Math.max(200, ms || 1200));
+      });
     },
   };
 

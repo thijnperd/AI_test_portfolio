@@ -329,7 +329,7 @@ test('every error-diffusion kernel is a proper normalised spread', function () {
 });
 
 test('every registered algorithm is reachable and keeps the canvas size', function () {
-  assert.strictEqual(D.ALGORITHMS.length, 43);
+  assert.strictEqual(D.ALGORITHMS.length, 46);
   const src = flat(20, 20, 100);
   D.ALGORITHMS.forEach(function (algo) {
     const res = D.process(src, { algorithm: algo.id, palette: 'bw', pixelSize: 2, seed: 9 });
@@ -341,6 +341,7 @@ test('every registered algorithm is reachable and keeps the canvas size', functi
   assert.strictEqual(count('ordered'), 18);
   assert.strictEqual(count('yliluoma'), 3);
   assert.strictEqual(count('formula'), 3);
+  assert.strictEqual(count('structure'), 3);
   assert.strictEqual(count('threshold'), 1);
   assert.strictEqual(count('noise') + count('bluenoise') + count('clustered-noise'), 4);
   // Every id is unique, or the picker would silently shadow one.
@@ -726,7 +727,190 @@ test('mono Yliluoma mixing still prints black and white only', function () {
 });
 
 /* ------------------------------------------------------------------ */
-/* 11. tone maps and alpha                                            */
+/* 11. structure-aware screens                                        */
+/* ------------------------------------------------------------------ */
+
+group('structure-aware screens');
+
+// A flat field, or a field with a hard vertical edge down the middle.
+function grayField(w, h, fn) {
+  const f = new Float32Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const g = fn(x, y);
+      const i = (y * w + x) * 3;
+      f[i] = g; f[i + 1] = g; f[i + 2] = g;
+    }
+  }
+  return f;
+}
+
+function columnVariance(screen, w, h, x) {
+  let mean = 0;
+  for (let y = 0; y < h; y++) mean += screen[y * w + x];
+  mean /= h;
+  let v = 0;
+  for (let y = 0; y < h; y++) v += (screen[y * w + x] - mean) ** 2;
+  return v / h;
+}
+
+function meanAbsDeviation(screen, w, h, x0, x1, y0, y1) {
+  let sum = 0, count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      sum += Math.abs(screen[y * w + x] - 128);
+      count++;
+    }
+  }
+  return sum / count;
+}
+
+test('structure screens are deterministic and seed-sensitive', function () {
+  const f = grayField(48, 48, function (x, y) { return 100 + x + y; });
+  const algo = { id: 'smooth-diffusion', mode: 'flow' };
+  const a = D.buildScreen(f, 48, 48, algo, { seed: 4, screen: { smooth: 3, flow: 60, streak: 0 } });
+  const b = D.buildScreen(f, 48, 48, algo, { seed: 4, screen: { smooth: 3, flow: 60, streak: 0 } });
+  const c = D.buildScreen(f, 48, 48, algo, { seed: 5, screen: { smooth: 3, flow: 60, streak: 0 } });
+  assert.ok(sameBytes(a, b), 'same seed, same screen');
+  assert.ok(!sameBytes(a, c), 'a new seed reshuffles the screen');
+});
+
+test('structure screens stay just inside the endpoints', function () {
+  const f = grayField(64, 64, function (x, y) { return (x * 4 + y * 4) % 256; });
+  ['flow', 'rain', 'dots'].forEach(function (mode) {
+    const s = D.buildScreen(f, 64, 64, { id: 'x', mode: mode }, { seed: 9, screen: { smooth: 2, flow: 100, streak: 100 } });
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] < min) min = s[i];
+      if (s[i] > max) max = s[i];
+    }
+    assert.ok(min >= 1, mode + ' min is ' + min);
+    assert.ok(max <= 254, mode + ' max is ' + max);
+  });
+});
+
+test('the flow knob stretches the screen along the image\'s contours', function () {
+  const w = 64, h = 64;
+  const f = grayField(w, h, function (x) { return x < 32 ? 60 : 200; });   // a vertical edge
+  const flat = D.buildScreen(f, w, h, { mode: 'flow' }, { seed: 6, screen: { smooth: 2, flow: 0, streak: 0 } });
+  const flowing = D.buildScreen(f, w, h, { mode: 'flow' }, { seed: 6, screen: { smooth: 2, flow: 100, streak: 0 } });
+  // The contour runs vertically at x = 31/32, so the screen should be smoother
+  // down that column than the unsmoothed field is.
+  const before = columnVariance(flat, w, h, 31);
+  const after = columnVariance(flowing, w, h, 31);
+  assert.ok(after < before * 0.7, 'flow smooths along the contour (' + after.toFixed(0) + ' < ' + before.toFixed(0) + ')');
+});
+
+test('rain streaks correlate vertically, not horizontally', function () {
+  const w = 64, h = 64;
+  const f = grayField(w, h, function () { return 120; });   // flat: no contours, so streak alone decides
+  const s = D.buildScreen(f, w, h, { mode: 'rain' }, { seed: 8, screen: { smooth: 2, flow: 0, streak: 100 } });
+  const down = columnVariance(s, w, h, 20);
+  let across = 0;
+  for (let x = 0; x < w; x++) across += (s[20 * w + x] - s[20 * w + 20]) ** 2;
+  across /= w;
+  assert.ok(down < across * 0.6, 'a column varies less than a row (' + down.toFixed(0) + ' < ' + across.toFixed(0) + ')');
+});
+
+test('the dot field opens up at edges and calms in flats', function () {
+  const w = 64, h = 64;
+  const f = grayField(w, h, function (x) { return x < 32 ? 60 : 200; });
+  const s = D.buildScreen(f, w, h, { mode: 'dots' }, { seed: 3, screen: { smooth: 2, flow: 0, streak: 0 } });
+  const flat = meanAbsDeviation(s, w, h, 4, 20, 4, 60);      // well inside the dark half
+  const edge = meanAbsDeviation(s, w, h, 28, 36, 4, 60);     // straddling the edge
+  assert.ok(flat < 30, 'flats sit near mid-grey (' + flat.toFixed(1) + ')');
+  assert.ok(edge > flat * 2.5, 'edges carry most of the spread (' + edge.toFixed(1) + ' vs ' + flat.toFixed(1) + ')');
+});
+
+test('every structure algorithm prints through both paths', function () {
+  ['smooth-diffusion', 'rain', 'dot-field'].forEach(function (id) {
+    const src = makeSource(48, 48, function (x, y) { return [x * 5, y * 5, 128]; });
+    const mono = D.process(src, { algorithm: id, palette: 'bw', pixelSize: 1, seed: 2 });
+    assert.strictEqual(mono.colors, 2, id + ' mono prints two tones');
+    uniqueColors(mono).forEach(function (c) {
+      assert.ok(c === 0 || c === 0xffffff, id + ' produced ' + c.toString(16));
+    });
+    const color = D.process(src, { algorithm: id, palette: 'matrix', pixelSize: 1, seed: 2 });
+    assert.ok(color.colors > 1 && color.colors <= 2, id + ' colour path stays in the ink set');
+  });
+});
+
+test('screenShift slides tile screens and is clamped by the merge', function () {
+  const src = makeSource(32, 32, function (x, y) { return [x * 7, y * 7, 90]; });
+  const a = D.process(src, { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, seed: 1 });
+  const b = D.process(src, { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, seed: 1, screenShift: 4 });
+  assert.ok(!sameBytes(a.data, b.data), 'a shifted screen prints differently');
+  const c = D.process(src, { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, seed: 1, screenShift: 8 });
+  assert.ok(sameBytes(a.data, c.data), 'a full-tile shift lands back on the same screen');
+  assert.strictEqual(D.mergeSettings({ screenShift: -5 }).screenShift, 0);
+  assert.strictEqual(D.mergeSettings({ screen: { smooth: 99, flow: -3 } }).screen.smooth, 12);
+  assert.strictEqual(D.mergeSettings({ screen: { flow: -3 } }).screen.flow, 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* 12. ripple, starfield and the ink palettes                         */
+/* ------------------------------------------------------------------ */
+
+group('ripple, starfield and inks');
+
+test('ripple rings displace pixels without changing the frame', function () {
+  const w = 64, h = 64;
+  const src = imageOf(w, h, function (x, y) { return [x * 3, y * 3, 40]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'ripple', amount: 70, mode: 'ripple' }], 3);
+  assert.ok(!sameBytes(out, src), 'the frame is displaced');
+  const seen = new Set();
+  for (let i = 0; i < w * h; i++) seen.add(out[i * 4]);
+  assert.ok(seen.size > 8, 'the image content survives the warp');
+});
+
+test('swirl and turbulence are distinct displacements', function () {
+  const w = 48, h = 48;
+  const src = imageOf(w, h, function (x, y) { return [(x * 5) % 256, (y * 5) % 256, 10]; });
+  const swirl = src.slice();
+  const turb = src.slice();
+  D.applyGlitchStack(swirl, w, h, [{ id: 'ripple', amount: 60, mode: 'swirl' }], 5);
+  D.applyGlitchStack(turb, w, h, [{ id: 'ripple', amount: 60, mode: 'turbulence' }], 5);
+  assert.ok(!sameBytes(swirl, turb), 'the two modes do different things');
+  assert.ok(!sameBytes(swirl, src) && !sameBytes(turb, src));
+});
+
+test('stars only take over the dark, dust lands everywhere', function () {
+  const w = 128, h = 128;
+  const src = imageOf(w, h, function (x) { return x < 64 ? [10, 10, 10] : [240, 240, 240]; });
+  const stars = src.slice();
+  D.applyGlitchStack(stars, w, h, [{ id: 'starfield', amount: 100, mode: 'stars' }], 11);
+  let darkLit = 0, brightChanged = 0;
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w;
+    if (x < 64) {
+      if (stars[i * 4] > 50) darkLit++;
+    } else if (stars[i * 4] !== 240) brightChanged++;
+  }
+  // Roughly the mode's density over the dark half, and never a touch elsewhere.
+  const expected = 0.002 * (w * h) / 2;
+  assert.ok(darkLit > expected * 0.4 && darkLit < expected * 2.5,
+    'stars light up the dark half (' + darkLit + ' pixels, ≈' + expected.toFixed(0) + ')');
+  assert.strictEqual(brightChanged, 0, 'and leave the bright half alone');
+  const dust = src.slice();
+  D.applyGlitchStack(dust, w, h, [{ id: 'starfield', amount: 100, mode: 'dust' }], 11);
+  let dustBright = 0;
+  for (let i = 0; i < w * h; i++) if (i % w >= 64 && dust[i * 4] !== 240) dustBright++;
+  assert.ok(dustBright > 20, 'dust spreads over the bright half too (' + dustBright + ')');
+});
+
+test('the new inks carry the levels they promise', function () {
+  function palette(id) { return D.PALETTES.find(function (p) { return p.id === id; }); }
+  assert.strictEqual(palette('matrix').colors.length, 2);
+  assert.strictEqual(palette('ice').colors.length, 2);
+  assert.ok(palette('matrix').colors[1][1] > palette('matrix').colors[0][1], 'matrix green brightens green');
+  assert.strictEqual(D.PALETTES.length, 24);
+  assert.strictEqual(D.GLITCHES.length, 13);
+  assert.strictEqual(D.ALGORITHMS.length, 46);
+});
+
+/* ------------------------------------------------------------------ */
+/* 13. tone maps and alpha                                            */
 /* ------------------------------------------------------------------ */
 
 group('tone maps and alpha');
@@ -823,7 +1007,7 @@ test('the alpha matte is averaged per chunk, not per pixel', function () {
 });
 
 /* ------------------------------------------------------------------ */
-/* 12. the wider glitch stack                                         */
+/* 14. the wider glitch stack                                         */
 /* ------------------------------------------------------------------ */
 
 group('wider glitch stack');
@@ -841,7 +1025,7 @@ function imageOf(w, h, fn) {
 }
 
 test('every glitch names itself and only offers modes it implements', function () {
-  assert.strictEqual(D.GLITCHES.length, 11);
+  assert.strictEqual(D.GLITCHES.length, 13);
   const ids = new Set();
   D.GLITCHES.forEach(function (g) {
     assert.ok(g.id && g.name && g.hint, 'metadata for ' + g.id);
@@ -1011,7 +1195,78 @@ test('new palettes carry the levels they promise', function () {
 });
 
 /* ------------------------------------------------------------------ */
-/* 13. performance budget                                             */
+/* 15. video: the temporal rules                                      */
+/* ------------------------------------------------------------------ */
+
+group('video temporal rules');
+
+test('freeze leaves the recipe exactly alone', function () {
+  const base = { algorithm: 'random-noise', palette: 'bw', pixelSize: 2, seed: 4242 };
+  for (const frame of [0, 1, 60]) {
+    const s = D.temporalSettings(base, frame, 'freeze');
+    assert.strictEqual(s.seed, 4242, 'the seed never moves');
+    assert.strictEqual(s.screenShift, 0, 'and neither does the screen');
+  }
+  assert.ok(D.TEMPORAL_MODES.indexOf('freeze') >= 0);
+});
+
+test('shimmer walks the seed one frame at a time', function () {
+  const base = { algorithm: 'random-noise', palette: 'bw', seed: 7 };
+  const seeds = [0, 1, 2, 3].map(function (f) { return D.temporalSettings(base, f, 'shimmer').seed; });
+  const unique = new Set(seeds);
+  assert.strictEqual(unique.size, seeds.length, 'no frame repeats a seed: ' + seeds.join(', '));
+  seeds.forEach(function (s) {
+    assert.ok(s >= 0 && s <= 0xffffffff, 'still a 32-bit seed: ' + s);
+    assert.ok(s !== base.seed, 'and never the still recipe by accident');
+  });
+  // The same frame index always yields the same seed, so playback is repeatable.
+  assert.strictEqual(D.temporalSettings(base, 2, 'shimmer').seed, seeds[2]);
+  // A long run must not fold onto itself (a short cycle would look like a loop).
+  const long = new Set();
+  for (let f = 0; f < 400; f++) long.add(D.temporalSettings(base, f, 'shimmer').seed);
+  assert.strictEqual(long.size, 400, '400 frames, 400 distinct seeds');
+});
+
+test('crawl slides the screen a pixel per frame', function () {
+  const base = { algorithm: 'bayer8', palette: 'bw', seed: 3 };
+  [0, 1, 5, 8, 9].forEach(function (f) {
+    assert.strictEqual(D.temporalSettings(base, f, 'crawl').screenShift, f);
+  });
+  assert.strictEqual(D.temporalSettings(base, 4.6, 'crawl').screenShift, 5, 'frame indices round');
+  // Clamping still applies: a huge index is a legit (if silly) shift.
+  assert.ok(D.temporalSettings(base, 1e9, 'crawl').screenShift <= 1000000);
+});
+
+test('a crawled frame lands on the published screen after a full tile', function () {
+  const src = makeSource(32, 32, function (x, y) { return [x * 6, y * 6, 128]; });
+  const base = { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, seed: 11 };
+  const zero = D.process(src, D.temporalSettings(base, 0, 'crawl'));
+  const eight = D.process(src, D.temporalSettings(base, 8, 'crawl'));
+  assert.deepStrictEqual(Array.from(eight.data), Array.from(zero.data), 'an 8 px shift is one Bayer-8 tile');
+  const four = D.process(src, D.temporalSettings(base, 4, 'crawl'));
+  assert.notDeepStrictEqual(Array.from(four.data), Array.from(zero.data), 'a half tile really moves');
+});
+
+test('shimmer redraws a noisy screen but keeps the tone', function () {
+  const w = 64, h = 64;
+  const src = makeSource(w, h, function () { return [128, 128, 128]; });
+  const base = { algorithm: 'random-noise', palette: 'bw', pixelSize: 1, seed: 21 };
+  const a = D.process(src, D.temporalSettings(base, 0, 'shimmer'));
+  const b = D.process(src, D.temporalSettings(base, 1, 'shimmer'));
+  const c = D.process(src, D.temporalSettings(base, 0, 'shimmer'));
+  assert.deepStrictEqual(Array.from(c.data), Array.from(a.data), 'frame 0 is reproducible');
+  let diff = 0, darkA = 0, darkB = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (a.data[i * 4] !== b.data[i * 4]) diff++;
+    if (a.data[i * 4] === 0) darkA++;
+    if (b.data[i * 4] === 0) darkB++;
+  }
+  assert.ok(diff > w * h * 0.25, 'the screen really reshuffles (' + diff + ' pixels)');
+  assert.ok(Math.abs(darkA - darkB) < w * h * 0.02, 'the tone holds: ' + darkA + ' vs ' + darkB);
+});
+
+/* ------------------------------------------------------------------ */
+/* 16. performance budget                                             */
 /* ------------------------------------------------------------------ */
 
 group('performance budget (1024×1024, pixel size 1)');
@@ -1059,6 +1314,20 @@ test('the whole glitch stack on a megapixel', function () {
     glitches: D.GLITCHES.map(function (g) { return { id: g.id, amount: 50 }; }),
   };
   budget('all 11 glitches', settings, 6000);
+});
+
+test('a structure screen holds its sample budget on a big frame', function () {
+  const w = 1024, h = 1024;
+  const src = makeSource(w, h, function (x, y) { return [x % 256, y % 256, 128]; });
+  const t0 = Date.now();
+  const res = D.process(src, {
+    algorithm: 'smooth-diffusion', palette: 'bw', pixelSize: 1, seed: 5,
+    screen: { smooth: 6, flow: 100, streak: 100 },
+  });
+  const ms = Date.now() - t0;
+  assert.strictEqual(res.colors, 2);
+  assert.ok(ms < 2500, 'a 1024² structure frame took ' + ms + ' ms (cap 2500)');
+  console.log('       smooth-diffusion 1024², flow + streak at 100: ' + ms + ' ms');
 });
 
 test('a cached blue-noise mask costs nothing to reuse', function () {
