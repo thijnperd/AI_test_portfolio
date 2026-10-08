@@ -11,7 +11,7 @@ also runs in Node.js so its rules are covered by tests.
 | Project | What it is |
 |---|---|
 | [algorithmic art](algorithmic%20art) | A zero-dependency generative-art studio: a gallery of seeded, reproducible sketches with PNG export. |
-| [dither studio](dither%20studio) | A print shop for pixels and video: 46 dithering algorithms (including three structure-aware screens that read the image's own contours), 24 palettes, tone maps, alpha mattes, a 13-effect stack you build by adding effects, text mode and live video with temporal dithering and WebM recording — driven from a collapsible station rail with Full/Live/Still update modes, and with the whole core under Node tests. |
+| [dither studio](dither%20studio) | A print shop for pixels and video: 46 dithering algorithms (including three structure-aware screens that read the image's own contours), 24 palettes, tone maps, alpha mattes, a 13-effect stack you build by adding effects, text mode and live video with temporal dithering and WebM recording — driven from a collapsible station rail with Full/Live/Still update modes, and with the whole core under Node tests. Also published as its own app: [thijnperd/dither-studio](https://github.com/thijnperd/dither-studio) opens it in its own window, with launchers, installable-app metadata and a guide. |
 | [analog horror raycaster](analog%20horror%20raycaster) | "Static Halls" — a first-person raycasting horror game with procedural fog, a stalking presence, a shard shop and two endings. |
 | [boids](boids) | Reynolds' flocking, from three steering rules with adjustable weights. |
 | [falling sand](falling%20sand) | A particle sandbox with gravity, density, hydrostatic pressure and wet-sand repose. |
@@ -56,6 +56,11 @@ them consistent:
 - `tools/` — the shared Playwright harness used to verify anything
   browser-facing; Playwright is installed globally, never as a project
   dependency.
+- Projects that have outgrown the portfolio live in their own repositories and
+  are kept out of this one with `.gitignore`. Today that is
+  [thijnperd/dither-studio](https://github.com/thijnperd/dither-studio), the
+  standalone app release of `dither studio`; the portfolio copy stays the
+  working project, and changes are mirrored into the app repository.
 - `.agents/skills/` — reusable agent skills, pinned in `skills-lock.json`.
 
 ## Verification

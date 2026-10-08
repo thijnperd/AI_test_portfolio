@@ -74,9 +74,9 @@ Paths in this index are relative to the repository root.
 | `wave function collapse/test.js` | Changing or debugging the solver (adjacency, entropy, propagation, backtracking, boundary rules); tests specify the expected behavior. |
 | `RobloxGame/(ai instructions).md` | Working anywhere in the Roblox Game design kit; it holds the rules that keep the prompts usable (originality constraints, anti-fabrication clauses, dated and sourced numbers) and the .md/.docx pairing rules. |
 | `RobloxGame/README.md` | Working in the Roblox Game design kit; it indexes which master prompt to use when, the order to use them in, and what was corrected in the folder. |
-| `dither studio/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation. |
+| `dither studio/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation, plus how this folder pairs with the standalone app repository it is published as (`thijnperd/dither-studio`, git-ignored here under `dither-studio/`). |
 | `dither studio/SOURCES.md` | Adding or changing a feature, algorithm, palette or numeric table in Dither Studio; it records which published work or open-source tool each one came from, and the divergences we chose deliberately. |
-| `dither studio/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. |
+| `dither studio/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. The app repository carries the same rules as its `AGENTS.md`. |
 | `dither studio/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, temporal rules, pipeline); tests specify the expected behavior. |
 | `dither studio/video.js` | Working on Dither Studio's video mode (frame source, playback clock with frame dropping, working-size cap, WebM recording); it is browser-only and deliberately knows nothing about dithering. |
 
@@ -112,3 +112,15 @@ Do not register ordinary task documentation that is not needed before future
 coding. Remove or revise entries when files are renamed, deleted, or no longer
 authoritative. Keep this index focused and avoid duplicate copies of the full
 instructions; link to the canonical source instead.
+
+## Projects published as their own repositories
+
+A project that outgrows the portfolio can be published as its own GitHub
+repository. When that happens, the published copy stays out of version control
+here (`.gitignore`) while the portfolio keeps the working project, and the
+project's `README.md` states which folder is which and that the two are kept in
+step. Today:
+
+| Project | Repository | Where the copy lives here |
+|---|---|---|
+| Dither Studio | [thijnperd/dither-studio](https://github.com/thijnperd/dither-studio) — the standalone app: launchers, manifest, generated icons, `GUIDE.md`, CI | `dither-studio/` (git-ignored; the portfolio copy is `dither studio/`) |

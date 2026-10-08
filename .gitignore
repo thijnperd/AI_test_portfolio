@@ -16,3 +16,10 @@ node_modules/
 # document metadata. It stays local: the VBA source (WieKentWie.bas) is what is
 # worth publishing, and the workbook can be rebuilt by importing it.
 *.xlsm
+
+# `dither-studio/` is Dither Studio published as its own app repository
+# (https://github.com/thijnperd/dither-studio): the same app plus app-mode
+# launchers, an installable manifest, generated icons, a guide and CI. It is a
+# copy with its own git history, so it stays out of this repository — see
+# `dither studio/README.md` for the pairing rule.
+dither-studio/
