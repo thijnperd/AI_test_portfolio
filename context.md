@@ -74,6 +74,9 @@ Paths in this index are relative to the repository root.
 | `wave function collapse/test.js` | Changing or debugging the solver (adjacency, entropy, propagation, backtracking, boundary rules); tests specify the expected behavior. |
 | `RobloxGame/(ai instructions).md` | Working anywhere in the Roblox Game design kit; it holds the rules that keep the prompts usable (originality constraints, anti-fabrication clauses, dated and sourced numbers) and the .md/.docx pairing rules. |
 | `RobloxGame/README.md` | Working in the Roblox Game design kit; it indexes which master prompt to use when, the order to use them in, and what was corrected in the folder. |
+| `dither studio/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation. |
+| `dither studio/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. |
+| `dither studio/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, pipeline); tests specify the expected behavior. |
 
 ## Skills
 

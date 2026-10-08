@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dither Studio — image dithering</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">Dither <span>Studio</span></h1>
+    <p class="muted intro">A free print shop for pixels: load an image, pick a press, pull a proof.</p>
+
+    <h2 class="small">Source</h2>
+    <div class="buttons">
+      <button id="open" class="btn btn-primary">Open image…</button>
+      <button id="demo" class="btn">Demo scene</button>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden />
+    <p class="muted mini">…or drop an image on the stage, or paste with <b>Ctrl+V</b>.</p>
+
+    <h2 class="small">Dither</h2>
+    <label class="field">
+      <span>Algorithm</span>
+      <select id="algorithm"></select>
+    </label>
+    <label class="field">
+      <span>Palette</span>
+      <select id="palette"></select>
+    </label>
+    <label class="field">
+      <span>Pixel size <em id="pixel-size-value">2</em></span>
+      <input type="range" id="pixel-size" min="1" max="16" step="1" value="2" />
+    </label>
+    <label class="field" id="threshold-row">
+      <span>Threshold <em id="threshold-value">128</em></span>
+      <input type="range" id="threshold" min="0" max="255" step="1" value="128" />
+    </label>
+    <label class="field">
+      <span>Seed <em id="seed-value">20261008</em></span>
+      <input type="number" id="seed" min="0" max="4294967295" step="1" value="20261008" />
+    </label>
+    <div class="buttons buttons-1">
+      <button id="reseed" class="btn">New seed</button>
+    </div>
+    <p class="muted mini">The seed drives noise dithers and the glitch stack; masks stay fixed.</p>
+
+    <h2 class="small">Tone</h2>
+    <label class="field">
+      <span>Brightness <em id="brightness-value">1.00</em></span>
+      <input type="range" id="brightness" min="0.5" max="1.5" step="0.01" value="1" />
+    </label>
+    <label class="field">
+      <span>Contrast <em id="contrast-value">1.00</em></span>
+      <input type="range" id="contrast" min="0.5" max="1.5" step="0.01" value="1" />
+    </label>
+    <label class="field">
+      <span>Saturation <em id="saturation-value">1.00</em></span>
+      <input type="range" id="saturation" min="0" max="2" step="0.01" value="1" />
+    </label>
+    <label class="field">
+      <span>Hue <em id="hue-value">0°</em></span>
+      <input type="range" id="hue" min="-180" max="180" step="1" value="0" />
+    </label>
+
+    <h2 class="small">Detail</h2>
+    <label class="field">
+      <span>Blur <em id="blur-value">0</em></span>
+      <input type="range" id="blur" min="0" max="4" step="0.5" value="0" />
+    </label>
+    <label class="field">
+      <span>Sharpen <em id="sharpen-value">0.00</em></span>
+      <input type="range" id="sharpen" min="0" max="2" step="0.05" value="0" />
+    </label>
+    <label class="check"><input type="checkbox" id="denoise" /> Denoise (3×3 median, slow)</label>
+
+    <h2 class="small">Glitch stack</h2>
+    <p class="muted mini">Runs top to bottom after the dither. Reorder with ↑↓.</p>
+    <div id="glitch-list"></div>
+
+    <h2 class="small">Glow</h2>
+    <label class="field">
+      <span>Radius <em id="glow-radius-value">0</em></span>
+      <input type="range" id="glow-radius" min="0" max="8" step="1" value="0" />
+    </label>
+    <label class="field">
+      <span>Intensity <em id="glow-intensity-value">0</em></span>
+      <input type="range" id="glow-intensity" min="0" max="100" step="1" value="0" />
+    </label>
+
+    <h2 class="small">Presets</h2>
+    <label class="field">
+      <span>Recipe</span>
+      <select id="preset"></select>
+    </label>
+    <div class="buttons">
+      <button id="preset-export" class="btn">Export JSON</button>
+      <button id="preset-import" class="btn">Import JSON</button>
+    </div>
+    <input type="file" id="preset-file" accept="application/json,.json" hidden />
+
+    <p class="muted hint">
+      Hold <b>C</b> (or the Compare button) to check the original · <b>+</b> /
+      <b>−</b> zoom · <b>0</b> fit. Everything is deterministic per seed:
+      the same recipe always produces the same proof.
+    </p>
+  </aside>
+
+  <main class="stage">
+    <header class="statusbar">
+      <span>File <b id="stat-file">demo</b></span>
+      <span>Size <b id="stat-size">—</b></span>
+      <span>Algorithm <b id="stat-algorithm">—</b></span>
+      <span>Palette <b id="stat-palette">—</b></span>
+      <span>Colors <b id="stat-colors">—</b></span>
+      <span>Render <b id="stat-render">—</b></span>
+      <span>Status <b id="stat-status">Ready</b></span>
+    </header>
+
+    <div class="toolbar">
+      <button id="zoom-out" class="btn btn-mini" title="Zoom out (−)">−</button>
+      <button id="zoom-fit" class="btn btn-mini" title="Fit (0)">Fit</button>
+      <button id="zoom-in" class="btn btn-mini" title="Zoom in (+)">+</button>
+      <span class="muted readout">Zoom <b id="stat-zoom">Fit</b></span>
+      <button id="compare" class="btn btn-mini">Hold to compare</button>
+      <span class="grow"></span>
+      <label class="inline">
+        <span class="muted">Export</span>
+        <select id="export-scale">
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+      </label>
+      <button id="export" class="btn btn-mini btn-primary">PNG</button>
+    </div>
+
+    <div id="canvas-wrap" class="canvas-wrap">
+      <div class="canvas-frame">
+        <canvas id="canvas" role="img" aria-label="Dithered preview"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script src="dither.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
