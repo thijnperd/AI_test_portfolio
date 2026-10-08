@@ -8,200 +8,285 @@
 </head>
 <body>
   <aside class="panel">
-    <h1 class="brand">Dither <span>Studio</span></h1>
-    <p class="muted intro">A free print shop for pixels: load an image, pick a press, pull a proof.</p>
+    <header class="rail-head">
+      <h1 class="brand">Dither <span>Studio</span></h1>
+      <p class="tagline">Offline dithering press — images, video, print</p>
+    </header>
 
-    <h2 class="small">Source</h2>
-    <div class="buttons">
-      <button id="open" class="btn btn-primary">Open image…</button>
-      <button id="demo" class="btn">Demo scene</button>
+    <!-- Station chips: the rail is tall, so it is also a row of links. -->
+    <nav class="jump" id="jump" aria-label="Sections"></nav>
+
+    <div class="rail-scroll" id="rail">
+      <section class="group" id="g-source" data-group="source" data-open="true">
+        <button class="group-head" type="button" aria-expanded="true">
+          <span class="group-name">Source</span>
+          <span class="group-note" id="note-source">demo scene</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <div class="buttons">
+            <button id="open" class="btn btn-primary">Open image…</button>
+            <button id="demo" class="btn">Demo scene</button>
+          </div>
+          <input type="file" id="file" accept="image/*" hidden />
+          <p class="hint">Drop an image on the stage, or paste with <b>Ctrl+V</b>.</p>
+        </div>
+      </section>
+
+      <section class="group" id="g-press" data-group="press" data-open="true">
+        <button class="group-head" type="button" aria-expanded="true">
+          <span class="group-name">Press</span>
+          <span class="group-note" id="note-press">—</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <div class="row-stepper">
+            <select id="algorithm" aria-label="Algorithm"></select>
+            <button class="btn btn-step" id="algorithm-prev" type="button" title="Previous algorithm">◀</button>
+            <button class="btn btn-step" id="algorithm-next" type="button" title="Next algorithm">▶</button>
+          </div>
+          <div class="row-stepper">
+            <select id="palette" aria-label="Palette"></select>
+            <button class="btn btn-step" id="palette-prev" type="button" title="Previous palette">◀</button>
+            <button class="btn btn-step" id="palette-next" type="button" title="Next palette">▶</button>
+          </div>
+          <div class="swatches" id="swatches" aria-label="Palette inks"></div>
+          <label class="field">
+            <span>Pixel size <em id="pixel-size-value">2</em></span>
+            <input type="range" id="pixel-size" min="1" max="16" step="1" value="2" />
+          </label>
+          <label class="field" id="threshold-row">
+            <span>Threshold <em id="threshold-value">128</em></span>
+            <input type="range" id="threshold" min="0" max="255" step="1" value="128" />
+          </label>
+          <label class="field">
+            <span>Strength <em id="strength-value">100</em>%</span>
+            <input type="range" id="strength" min="0" max="200" step="1" value="100" />
+          </label>
+          <label class="field" id="smooth-row" hidden>
+            <span>Smoothness <em id="smooth-value">3</em></span>
+            <input type="range" id="smooth" min="1" max="12" step="1" value="3" />
+          </label>
+          <label class="field" id="flow-row" hidden>
+            <span>Flow <em id="flow-value">60</em></span>
+            <input type="range" id="flow" min="0" max="100" step="1" value="60" />
+          </label>
+          <label class="field" id="streak-row" hidden>
+            <span>Streak <em id="streak-value">0</em></span>
+            <input type="range" id="streak" min="0" max="100" step="1" value="0" />
+          </label>
+          <label class="check"><input type="checkbox" id="serpentine" /> Serpentine sweep</label>
+          <div class="seed-row">
+            <input type="number" id="seed" min="0" max="4294967295" step="1" value="20261008" aria-label="Seed" />
+            <button id="reseed" class="btn btn-step" type="button" title="New seed">⟳</button>
+          </div>
+          <p class="hint">Strength scales the screen away from mid-grey; the seed drives
+            every random stage. Masks stay fixed.</p>
+        </div>
+      </section>
+
+      <section class="group" id="g-tone" data-group="tone" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Tone</span>
+          <span class="group-note" id="note-tone">neutral</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Black point <em id="black-value">0</em></span>
+            <input type="range" id="black" min="0" max="128" step="1" value="0" />
+          </label>
+          <label class="field">
+            <span>White point <em id="white-value">255</em></span>
+            <input type="range" id="white" min="128" max="255" step="1" value="255" />
+          </label>
+          <label class="field">
+            <span>Gamma <em id="gamma-value">1.00</em></span>
+            <input type="range" id="gamma" min="0.3" max="3" step="0.02" value="1" />
+          </label>
+          <label class="field">
+            <span>Brightness <em id="brightness-value">1.00</em></span>
+            <input type="range" id="brightness" min="0.5" max="1.5" step="0.01" value="1" />
+          </label>
+          <label class="field">
+            <span>Contrast <em id="contrast-value">1.00</em></span>
+            <input type="range" id="contrast" min="0.5" max="1.5" step="0.01" value="1" />
+          </label>
+          <label class="field">
+            <span>Saturation <em id="saturation-value">1.00</em></span>
+            <input type="range" id="saturation" min="0" max="2" step="0.01" value="1" />
+          </label>
+          <label class="field">
+            <span>Hue <em id="hue-value">0°</em></span>
+            <input type="range" id="hue" min="-180" max="180" step="1" value="0" />
+          </label>
+        </div>
+      </section>
+
+      <section class="group" id="g-ink" data-group="ink" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Ink</span>
+          <span class="group-note" id="note-ink">none</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Tone map</span>
+            <select id="tone-map"></select>
+          </label>
+          <div class="ink-row" id="ink-custom" hidden>
+            <label class="inline">
+              <span>Ink</span>
+              <input type="color" id="tone-ink" value="#000000" />
+            </label>
+            <label class="inline">
+              <span>Paper</span>
+              <input type="color" id="tone-paper" value="#ffffff" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Alpha</span>
+            <select id="alpha-mode">
+              <option value="matte" selected>Flatten onto paper</option>
+              <option value="sharpen">Dither the matte</option>
+              <option value="keep">Keep as PNG alpha</option>
+            </select>
+          </label>
+          <p class="hint">Tone maps re-ink the finished dither, so 1-bit stays exactly
+            two inks. Alpha decides what happens to transparency.</p>
+        </div>
+      </section>
+
+      <section class="group" id="g-detail" data-group="detail" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Detail</span>
+          <span class="group-note" id="note-detail">none</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Blur <em id="blur-value">0</em></span>
+            <input type="range" id="blur" min="0" max="4" step="0.5" value="0" />
+          </label>
+          <label class="field">
+            <span>Sharpen <em id="sharpen-value">0.00</em></span>
+            <input type="range" id="sharpen" min="0" max="2" step="0.05" value="0" />
+          </label>
+          <label class="check"><input type="checkbox" id="denoise" /> Denoise (3×3 median)</label>
+        </div>
+      </section>
+
+      <section class="group" id="g-effects" data-group="effects" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Effects</span>
+          <span class="group-note" id="note-effects">none</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Add to the stack</span>
+            <select id="effect-add"><option value="">Choose an effect…</option></select>
+          </label>
+          <div class="stack" id="effect-list"></div>
+          <p class="hint">Effects run top to bottom after the dither. Add what you need,
+            reorder with the arrows.</p>
+        </div>
+      </section>
+
+      <section class="group" id="g-glow" data-group="glow" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Glow</span>
+          <span class="group-note" id="note-glow">off</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Radius <em id="glow-radius-value">0</em></span>
+            <input type="range" id="glow-radius" min="0" max="8" step="1" value="0" />
+          </label>
+          <label class="field">
+            <span>Intensity <em id="glow-intensity-value">0</em></span>
+            <input type="range" id="glow-intensity" min="0" max="100" step="1" value="0" />
+          </label>
+        </div>
+      </section>
+
+      <section class="group" id="g-motion" data-group="motion" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Motion</span>
+          <span class="group-note" id="note-motion">no source</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <div class="buttons">
+            <button id="video-webcam" class="btn">Webcam</button>
+            <button id="video-open" class="btn">Open video…</button>
+          </div>
+          <input type="file" id="video-file" accept="video/*" hidden />
+          <label class="field" id="video-fps-row" hidden>
+            <span>Frame rate <em id="video-fps-value">12</em> fps</span>
+            <input type="range" id="video-fps" min="1" max="30" step="1" value="12" />
+          </label>
+          <label class="field" id="video-temporal-row" hidden>
+            <span>Temporal dither</span>
+            <select id="video-temporal">
+              <option value="freeze">Frozen — one stable screen</option>
+              <option value="shimmer" selected>Shimmer — reshuffle every frame</option>
+              <option value="crawl">Crawl — the screen scrolls</option>
+            </select>
+          </label>
+          <div class="buttons buttons-1" id="video-record-row" hidden>
+            <button id="video-record" class="btn">● Record WebM</button>
+          </div>
+          <p class="hint" id="video-note">Play a clip or the webcam through the press.
+            Transport and frame readout sit under the viewport.</p>
+        </div>
+      </section>
+
+      <section class="group" id="g-type" data-group="type" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Type</span>
+          <span class="group-note" id="note-type">off</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="check"><input type="checkbox" id="text-mode" /> Print with characters</label>
+          <label class="field" id="text-charset-row" hidden>
+            <span>Ramp</span>
+            <select id="text-charset"></select>
+          </label>
+          <label class="field" id="text-size-row" hidden>
+            <span>Cell <em id="text-size-value">10</em> px</span>
+            <input type="range" id="text-size" min="6" max="24" step="1" value="10" />
+          </label>
+          <div class="buttons buttons-1" id="text-export-row" hidden>
+            <button id="export-txt" class="btn">Export .txt</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" id="g-preset" data-group="preset" data-open="false">
+        <button class="group-head" type="button" aria-expanded="false">
+          <span class="group-name">Presets</span>
+          <span class="group-note" id="note-preset">26 recipes</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="group-body">
+          <label class="field">
+            <span>Recipe</span>
+            <select id="preset"></select>
+          </label>
+          <div class="buttons">
+            <button id="preset-export" class="btn">Export JSON</button>
+            <button id="preset-import" class="btn">Import JSON</button>
+          </div>
+          <input type="file" id="preset-file" accept="application/json,.json" hidden />
+        </div>
+      </section>
     </div>
-    <input type="file" id="file" accept="image/*" hidden />
-    <p class="muted mini">…or drop an image on the stage, or paste with <b>Ctrl+V</b>.</p>
 
-    <h2 class="small">Video</h2>
-    <div class="buttons">
-      <button id="video-webcam" class="btn">Webcam</button>
-      <button id="video-open" class="btn">Open video…</button>
-    </div>
-    <input type="file" id="video-file" accept="video/*" hidden />
-    <div class="buttons buttons-1">
-      <button id="video-toggle" class="btn btn-primary" disabled>Play</button>
-    </div>
-    <label class="field" id="video-fps-row" hidden>
-      <span>Frame rate <em id="video-fps-value">12</em> fps</span>
-      <input type="range" id="video-fps" min="1" max="30" step="1" value="12" />
-    </label>
-    <label class="field" id="video-temporal-row" hidden>
-      <span>Temporal dither</span>
-      <select id="video-temporal">
-        <option value="freeze">Frozen — one stable screen</option>
-        <option value="shimmer" selected>Shimmer — reshuffle every frame</option>
-        <option value="crawl">Crawl — the screen scrolls</option>
-      </select>
-    </label>
-    <div class="buttons buttons-1" id="video-record-row" hidden>
-      <button id="video-record" class="btn">● Record WebM</button>
-    </div>
-    <p class="muted mini" id="video-note">Every algorithm, ink and glitch runs live
-      over the frame. A heavy recipe drops frames rather than slowing down.</p>
-
-    <h2 class="small">Dither</h2>
-    <label class="field">
-      <span>Algorithm</span>
-      <select id="algorithm"></select>
-    </label>
-    <label class="field">
-      <span>Palette</span>
-      <select id="palette"></select>
-    </label>
-    <label class="field">
-      <span>Pixel size <em id="pixel-size-value">2</em></span>
-      <input type="range" id="pixel-size" min="1" max="16" step="1" value="2" />
-    </label>
-    <label class="field" id="threshold-row">
-      <span>Threshold <em id="threshold-value">128</em></span>
-      <input type="range" id="threshold" min="0" max="255" step="1" value="128" />
-    </label>
-    <label class="field">
-      <span>Strength <em id="strength-value">100</em>%</span>
-      <input type="range" id="strength" min="0" max="200" step="1" value="100" />
-    </label>
-    <label class="field" id="smooth-row" hidden>
-      <span>Smoothness <em id="smooth-value">3</em></span>
-      <input type="range" id="smooth" min="1" max="12" step="1" value="3" />
-    </label>
-    <label class="field" id="flow-row" hidden>
-      <span>Flow <em id="flow-value">60</em></span>
-      <input type="range" id="flow" min="0" max="100" step="1" value="60" />
-    </label>
-    <label class="field" id="streak-row" hidden>
-      <span>Streak <em id="streak-value">0</em></span>
-      <input type="range" id="streak" min="0" max="100" step="1" value="0" />
-    </label>
-    <label class="check"><input type="checkbox" id="serpentine" /> Serpentine sweep (error diffusion)</label>
-    <label class="field">
-      <span>Seed <em id="seed-value">20261008</em></span>
-      <input type="number" id="seed" min="0" max="4294967295" step="1" value="20261008" />
-    </label>
-    <div class="buttons buttons-1">
-      <button id="reseed" class="btn">New seed</button>
-    </div>
-    <p class="muted mini">Strength scales every screen away from mid-grey (0 = plain
-      threshold, 100 = the published screen, higher pushes it). The seed drives
-      noise dithers and the glitch stack; masks stay fixed.</p>
-
-    <h2 class="small">Tone</h2>
-    <label class="field">
-      <span>Black point <em id="black-value">0</em></span>
-      <input type="range" id="black" min="0" max="128" step="1" value="0" />
-    </label>
-    <label class="field">
-      <span>White point <em id="white-value">255</em></span>
-      <input type="range" id="white" min="128" max="255" step="1" value="255" />
-    </label>
-    <label class="field">
-      <span>Gamma <em id="gamma-value">1.00</em></span>
-      <input type="range" id="gamma" min="0.3" max="3" step="0.02" value="1" />
-    </label>
-    <label class="field">
-      <span>Brightness <em id="brightness-value">1.00</em></span>
-      <input type="range" id="brightness" min="0.5" max="1.5" step="0.01" value="1" />
-    </label>
-    <label class="field">
-      <span>Contrast <em id="contrast-value">1.00</em></span>
-      <input type="range" id="contrast" min="0.5" max="1.5" step="0.01" value="1" />
-    </label>
-    <label class="field">
-      <span>Saturation <em id="saturation-value">1.00</em></span>
-      <input type="range" id="saturation" min="0" max="2" step="0.01" value="1" />
-    </label>
-    <label class="field">
-      <span>Hue <em id="hue-value">0°</em></span>
-      <input type="range" id="hue" min="-180" max="180" step="1" value="0" />
-    </label>
-
-    <h2 class="small">Detail</h2>
-    <label class="field">
-      <span>Blur <em id="blur-value">0</em></span>
-      <input type="range" id="blur" min="0" max="4" step="0.5" value="0" />
-    </label>
-    <label class="field">
-      <span>Sharpen <em id="sharpen-value">0.00</em></span>
-      <input type="range" id="sharpen" min="0" max="2" step="0.05" value="0" />
-    </label>
-    <label class="check"><input type="checkbox" id="denoise" /> Denoise (3×3 median, slow)</label>
-
-    <h2 class="small">Ink</h2>
-    <label class="field">
-      <span>Tone map</span>
-      <select id="tone-map"></select>
-    </label>
-    <div class="ink-row" id="ink-custom" hidden>
-      <label class="inline">
-        <span class="muted">Ink</span>
-        <input type="color" id="tone-ink" value="#000000" />
-      </label>
-      <label class="inline">
-        <span class="muted">Paper</span>
-        <input type="color" id="tone-paper" value="#ffffff" />
-      </label>
-    </div>
-    <p class="muted mini">Re-inks the finished dither, so 1-bit stays exactly two inks.</p>
-
-    <h2 class="small">Transparency</h2>
-    <label class="field">
-      <span>Alpha</span>
-      <select id="alpha-mode">
-        <option value="matte" selected>Flatten onto paper</option>
-        <option value="sharpen">Dither the matte (hard edges)</option>
-        <option value="keep">Keep as PNG alpha</option>
-      </select>
-    </label>
-
-    <h2 class="small">Text mode</h2>
-    <label class="check"><input type="checkbox" id="text-mode" /> Print with characters</label>
-    <label class="field" id="text-charset-row" hidden>
-      <span>Ramp</span>
-      <select id="text-charset"></select>
-    </label>
-    <label class="field" id="text-size-row" hidden>
-      <span>Cell <em id="text-size-value">10</em> px</span>
-      <input type="range" id="text-size" min="6" max="24" step="1" value="10" />
-    </label>
-    <div class="buttons buttons-1" id="text-export-row" hidden>
-      <button id="export-txt" class="btn">Export .txt</button>
-    </div>
-
-    <h2 class="small">Glitch stack</h2>
-    <p class="muted mini">Runs top to bottom after the dither. Reorder with ↑↓.</p>
-    <div id="glitch-list"></div>
-
-    <h2 class="small">Glow</h2>
-    <label class="field">
-      <span>Radius <em id="glow-radius-value">0</em></span>
-      <input type="range" id="glow-radius" min="0" max="8" step="1" value="0" />
-    </label>
-    <label class="field">
-      <span>Intensity <em id="glow-intensity-value">0</em></span>
-      <input type="range" id="glow-intensity" min="0" max="100" step="1" value="0" />
-    </label>
-
-    <h2 class="small">Presets</h2>
-    <label class="field">
-      <span>Recipe</span>
-      <select id="preset"></select>
-    </label>
-    <div class="buttons">
-      <button id="preset-export" class="btn">Export JSON</button>
-      <button id="preset-import" class="btn">Import JSON</button>
-    </div>
-    <input type="file" id="preset-file" accept="application/json,.json" hidden />
-
-    <p class="muted hint">
-      Hold <b>C</b> (or the Compare button) to check the original · <b>+</b> /
-      <b>−</b> zoom · <b>0</b> fit · <b>R</b> a fresh recipe. Everything is
-      deterministic per seed: the same recipe always produces the same proof.
+    <p class="rail-hint">
+      Hold <b>C</b> compare · <b>+</b> / <b>−</b> zoom · <b>0</b> fit · <b>R</b> fresh recipe
     </p>
   </aside>
 
@@ -221,12 +306,12 @@
       <button id="zoom-fit" class="btn btn-mini" title="Fit (0)">Fit</button>
       <button id="zoom-in" class="btn btn-mini" title="Zoom in (+)">+</button>
       <span class="muted readout">Zoom <b id="stat-zoom">Fit</b></span>
-      <button id="compare" class="btn btn-mini">Hold to compare</button>
-      <button id="random" class="btn btn-mini" title="Roll a fresh recipe">Random</button>
+      <button id="compare" class="btn btn-mini" title="Hold to compare (C)">Hold to compare</button>
+      <button id="random" class="btn btn-mini" title="Roll a fresh recipe (R)">Random</button>
       <span class="grow"></span>
       <button id="copy" class="btn btn-mini">Copy PNG</button>
       <label class="inline">
-        <span class="muted">Export</span>
+        <span>Export</span>
         <select id="export-scale">
           <option value="1" selected>1×</option>
           <option value="2">2×</option>
@@ -242,6 +327,21 @@
         <canvas id="canvas" role="img" aria-label="Dithered preview"></canvas>
       </div>
     </div>
+
+    <footer class="viewport-bar">
+      <span class="readout">Update</span>
+      <div class="seg" id="quality" role="radiogroup" aria-label="Update mode">
+        <button class="seg-btn" type="button" role="radio" data-value="full" aria-checked="false">Full</button>
+        <button class="seg-btn is-on" type="button" role="radio" data-value="live" aria-checked="true">Live</button>
+        <button class="seg-btn" type="button" role="radio" data-value="still" aria-checked="false">Still</button>
+      </div>
+      <span class="readout" id="quality-note">Live — half-res while dragging</span>
+      <span class="grow"></span>
+      <div class="transport" id="transport" hidden>
+        <button id="video-toggle" class="btn btn-mini btn-primary" type="button" disabled>Play</button>
+        <span class="readout" id="video-readout">frame 0 · 12 fps</span>
+      </div>
+    </footer>
   </main>
 
   <script src="dither.js"></script>

@@ -82,6 +82,21 @@ pick a dense palette or the two-colour variant for a calmer screen.
 | [MDN — `HTMLCanvasElement.captureStream()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream) and [`MediaRecorder`](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder) | WebM recording of the dithered canvas, with VP9 → VP8 → default codec fallback and a 60 s guard against runaway memory. |
 | [MDN — `HTMLVideoElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement) and [`getUserMedia`](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) | The frame sources: a user-picked video file, the webcam, or the generated clip the browser checks drive (which needs no codec, so verification stays offline and deterministic). |
 
+## Interface research (how the console is organised)
+
+The house style in [`../DESIGN.md`](../DESIGN.md) governs every visual decision
+here: the tokens are copied verbatim, the layout is the 260px rail plus the
+stage, the type is mono, and separation is hairlines rather than shadows. What
+was researched is the *organisation* — how a paid dithering tool keeps a large
+feature set navigable — not the paint.
+
+| Source | What it informed |
+|---|---|
+| [Dither Boy — Studio AAA](https://studioaaa.com/product/dither-boy/) (product page, read again for the UI work) | The feature inventory the rail has to accommodate without becoming a wall of controls: 63 algorithms, stackable effects, presets that save and share a whole setup, palettes as the first-class object, animation and video, and a "stack and reorder effects" pipeline. |
+| [Dither Boy 6.0 coverage — digitalproduction.com](https://digitalproduction.com/2026/03/18/dither-boy-6-0-brings-animation-and-video-polish/) | The three concrete navigation decisions this console copies: **effects become an add system** (a plus control adds an effect to a reorderable stack instead of toggling a catalogue on), **algorithm browsing steps with arrow controls**, and a **playback and update control at the bottom of the viewport with three modes — full, live, still** — which is exactly what `state.quality` implements. The same article's note that palette swatches are individually editable and lockable is why the palette picker here gained a swatch strip. |
+| [Dither Boy v3.0 release post](https://studioaaa.com/dither-boy-v3-0/) | That presets are treated as saveable setups and that video/batch live in the same tool as stills — the reason Motion is a station in the same rail rather than a separate mode of the app. |
+| Dither Boy's in-app manual (linked from the site as a Google Doc) | Not readable as text, so nothing here is attributed to it; the structure came from the release notes and press coverage above. Recorded so the gap is honest. |
+
 ## Palette data
 
 | Source | Palette |

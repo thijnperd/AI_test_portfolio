@@ -25,11 +25,14 @@
   const el = {
     open: $('open'), demo: $('demo'), file: $('file'),
     algorithm: $('algorithm'), palette: $('palette'),
+    algorithmPrev: $('algorithm-prev'), algorithmNext: $('algorithm-next'),
+    palettePrev: $('palette-prev'), paletteNext: $('palette-next'),
+    swatches: $('swatches'),
     pixelSize: $('pixel-size'), pixelSizeValue: $('pixel-size-value'),
     threshold: $('threshold'), thresholdValue: $('threshold-value'), thresholdRow: $('threshold-row'),
     strength: $('strength'), strengthValue: $('strength-value'),
     serpentine: $('serpentine'),
-    seed: $('seed'), seedValue: $('seed-value'), reseed: $('reseed'),
+    seed: $('seed'), reseed: $('reseed'),
     smooth: $('smooth'), smoothValue: $('smooth-value'), smoothRow: $('smooth-row'),
     flow: $('flow'), flowValue: $('flow-value'), flowRow: $('flow-row'),
     streak: $('streak'), streakValue: $('streak-value'), streakRow: $('streak-row'),
@@ -49,7 +52,7 @@
     blur: $('blur'), blurValue: $('blur-value'),
     sharpen: $('sharpen'), sharpenValue: $('sharpen-value'),
     denoise: $('denoise'),
-    glitchList: $('glitch-list'),
+    effectList: $('effect-list'), effectAdd: $('effect-add'),
     glowRadius: $('glow-radius'), glowRadiusValue: $('glow-radius-value'),
     glowIntensity: $('glow-intensity'), glowIntensityValue: $('glow-intensity-value'),
     preset: $('preset'), presetExport: $('preset-export'), presetImport: $('preset-import'), presetFile: $('preset-file'),
@@ -64,10 +67,34 @@
     videoTemporalRow: $('video-temporal-row'), videoRecord: $('video-record'),
     videoRecordRow: $('video-record-row'), videoNote: $('video-note'),
     wrap: $('canvas-wrap'), canvas: $('canvas'),
+    // rail navigation and the viewport bar
+    rail: $('rail'), jump: $('jump'),
+    quality: $('quality'), qualityNote: $('quality-note'),
+    transport: $('transport'), videoReadout: $('video-readout'),
+    noteSource: $('note-source'), notePress: $('note-press'), noteTone: $('note-tone'),
+    noteInk: $('note-ink'), noteDetail: $('note-detail'), noteEffects: $('note-effects'),
+    noteGlow: $('note-glow'), noteMotion: $('note-motion'), noteType: $('note-type'),
+    notePreset: $('note-preset'),
   };
 
   const ctx = el.canvas.getContext('2d');
   const buffer = document.createElement('canvas');
+
+  // The rail's stations: every panel group is collapsible, and the chips above
+  // the rail scroll to one. Order here is the order of the jump strip.
+  const GROUPS = [
+    { id: 'source', name: 'Source' },
+    { id: 'press', name: 'Press' },
+    { id: 'tone', name: 'Tone' },
+    { id: 'ink', name: 'Ink' },
+    { id: 'detail', name: 'Detail' },
+    { id: 'effects', name: 'Effects' },
+    { id: 'glow', name: 'Glow' },
+    { id: 'motion', name: 'Motion' },
+    { id: 'type', name: 'Type' },
+    { id: 'preset', name: 'Presets' },
+  ];
+  const GROUP_STORE = 'dither-studio.groups';
 
   const state = {
     source: null,       // { data, width, height } at working resolution
@@ -80,6 +107,7 @@
     panning: null,
     rafPending: false,
     videoOn: false,     // frames come from video.js rather than a still image
+    quality: 'live',    // 'full' | 'live' | 'still' — the viewport update mode
   };
 
   // The glitch stack lives in the panel as a reorderable list, so the UI state
@@ -217,7 +245,6 @@
       binding.label.textContent = binding.fmt(parseFloat(value));
     });
     el.seed.value = s.seed;
-    el.seedValue.textContent = String(s.seed);
     el.denoise.checked = !!s.adjustments.denoise;
     el.serpentine.checked = !!s.serpentine;
     el.toneMap.value = s.toneMap;
@@ -229,7 +256,198 @@
     el.canvas.classList.toggle('alpha-on', s.alphaMode !== 'matte');
     syncTextUI();
     syncScreenRows();
-    rebuildGlitchValues();
+    buildEffectList();
+    syncEffectChoices();
+    buildSwatches();
+    syncGroupNotes();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* rail navigation                                                    */
+  /* ------------------------------------------------------------------ */
+
+  function groupEl(id) {
+    return document.getElementById('g-' + id);
+  }
+
+  // Collapsed stations keep the rail bearable; the summary on the right says
+  // what is inside without opening them.
+  function setGroup(id, open) {
+    const group = groupEl(id);
+    if (!group) return false;
+    group.setAttribute('data-open', open ? 'true' : 'false');
+    const head = group.querySelector('.group-head');
+    if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    saveGroups();
+    markJump();
+    return true;
+  }
+
+  function groupOpen(id) {
+    const group = groupEl(id);
+    return !!group && group.getAttribute('data-open') === 'true';
+  }
+
+  function saveGroups() {
+    try {
+      const open = GROUPS.filter(function (g) { return groupOpen(g.id); })
+        .map(function (g) { return g.id; });
+      window.localStorage.setItem(GROUP_STORE, open.join(','));
+    } catch (err) { /* private mode, file://, or storage disabled: not important */ }
+  }
+
+  function loadGroups() {
+    let saved = null;
+    try { saved = window.localStorage.getItem(GROUP_STORE); } catch (err) { saved = null; }
+    if (saved === null) return;
+    const open = saved.split(',').filter(Boolean);
+    GROUPS.forEach(function (g) { setGroup(g.id, open.indexOf(g.id) >= 0); });
+  }
+
+  // A chip click pins the highlight to the station that was asked for (the rail
+  // may not be able to scroll a late station all the way up). The pin drops as
+  // soon as the user scrolls the rail themselves.
+  let jumpPinned = null;
+
+  function unpinJump() { jumpPinned = null; markJump(); }
+
+  function buildJump() {
+    el.jump.textContent = '';
+    GROUPS.forEach(function (g) {
+      const chip = document.createElement('button');
+      chip.className = 'jump-chip';
+      chip.type = 'button';
+      chip.textContent = g.name;
+      chip.setAttribute('data-target', g.id);
+      chip.addEventListener('click', function () {
+        jumpPinned = g.id;
+        setGroup(g.id, true);
+        const group = groupEl(g.id);
+        if (group) {
+          el.rail.scrollTop += group.getBoundingClientRect().top -
+            el.rail.getBoundingClientRect().top - 6;
+        }
+        markJump();
+      });
+      el.jump.appendChild(chip);
+    });
+  }
+
+  // The chip for whichever station is at the top of the rail, so the strip
+  // doubles as a position readout while scrolling.
+  function markJump() {
+    let current = jumpPinned || (GROUPS.length ? GROUPS[0].id : null);
+    if (!jumpPinned) {
+      const railTop = el.rail.getBoundingClientRect().top + 30;
+      GROUPS.forEach(function (g) {
+        const group = groupEl(g.id);
+        if (group && group.getBoundingClientRect().top <= railTop) current = g.id;
+      });
+    }
+    Array.prototype.forEach.call(el.jump.children, function (chip) {
+      chip.setAttribute('aria-current', chip.getAttribute('data-target') === current ? 'true' : 'false');
+    });
+  }
+
+  function initGroups() {
+    el.rail.addEventListener('scroll', function () { window.requestAnimationFrame(markJump); });
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (type) {
+      el.rail.addEventListener(type, unpinJump, { passive: true });
+    });
+    GROUPS.forEach(function (g) {
+      const group = groupEl(g.id);
+      if (!group) return;
+      const head = group.querySelector('.group-head');
+      if (head) {
+        head.addEventListener('click', function () {
+          setGroup(g.id, !groupOpen(g.id));
+        });
+      }
+    });
+  }
+
+  // What is inside each station, in one line, on the closed header.
+  function syncGroupNotes() {
+    const s = state.settings;
+    const algo = algorithmById(s.algorithm);
+    const palette = paletteById(s.palette);
+    const effects = activeEffects();
+    setNote(el.noteSource, state.name || 'nothing loaded');
+    setNote(el.notePress, algo.name + ' · ' + shortPalette(palette));
+    setNote(el.noteTone, toneSummary());
+    setNote(el.noteInk, inkSummary());
+    setNote(el.noteDetail, detailSummary());
+    setNote(el.noteEffects, effects.length ? effects.length + ' in stack' : 'none');
+    setNote(el.noteGlow, s.glow.radius > 0 && s.glow.intensity > 0
+      ? 'r' + s.glow.radius + ' · ' + s.glow.intensity + '%'
+      : 'off');
+    setNote(el.noteMotion, motionSummary());
+    setNote(el.noteType, text.on ? text.ramp + ' · ' + text.size + 'px' : 'off');
+    setNote(el.notePreset, PRESETS.length + ' recipes');
+  }
+
+  function setNote(node, value) {
+    if (node) node.textContent = value;
+  }
+
+  function shortPalette(palette) {
+    const name = palette.name.replace(/\s*\(.*?\)/, '');
+    return name + ' · ' + palette.colors.length + 'c';
+  }
+
+  function toneSummary() {
+    const a = state.settings.adjustments;
+    const parts = [];
+    if (a.black) parts.push('B' + a.black);
+    if (a.white !== 255) parts.push('W' + a.white);
+    if (Math.abs(a.gamma - 1) > 0.001) parts.push('g' + a.gamma.toFixed(2));
+    if (Math.abs(a.brightness - 1) > 0.001) parts.push('br ' + a.brightness.toFixed(2));
+    if (Math.abs(a.contrast - 1) > 0.001) parts.push('ct ' + a.contrast.toFixed(2));
+    if (Math.abs(a.saturation - 1) > 0.001) parts.push('sat ' + a.saturation.toFixed(2));
+    if (a.hue) parts.push('hue ' + a.hue + '°');
+    return parts.length ? parts.join(' · ') : 'neutral';
+  }
+
+  function detailSummary() {
+    const a = state.settings.adjustments;
+    const parts = [];
+    if (a.blur) parts.push('blur ' + a.blur);
+    if (a.sharpen) parts.push('sharp ' + a.sharpen.toFixed(2));
+    if (a.denoise) parts.push('denoise');
+    return parts.length ? parts.join(' · ') : 'none';
+  }
+
+  function inkSummary() {
+    const map = D.TONE_MAPS.find(function (m) { return m.id === state.settings.toneMap; });
+    const alpha = state.settings.alphaMode === 'matte' ? 'flatten'
+      : state.settings.alphaMode === 'sharpen' ? 'dither matte' : 'keep alpha';
+    const ink = map && map.id !== 'none' ? map.name : 'no map';
+    return ink + ' · ' + alpha;
+  }
+
+  function motionSummary() {
+    if (!state.videoOn || !video) return 'no source';
+    const stats = video.stats();
+    return stats.playing ? 'playing · ' + stats.fps + ' fps' : 'paused · ' + stats.fps + ' fps';
+  }
+
+  // The ink strip under the palette picker: the actual colours the press will
+  // use, which is how a palette-first tool should read at a glance.
+  function buildSwatches() {
+    const palette = paletteById(state.settings.palette);
+    const colors = palette.colors.slice();
+    // Sixteen chips is the widest hardware palette here; more would tile.
+    const step = colors.length > 16 ? colors.length / 16 : 1;
+    el.swatches.textContent = '';
+    for (let i = 0; i < colors.length; i += step) {
+      const chip = document.createElement('span');
+      const c = colors[Math.floor(i)];
+      chip.className = 'swatch';
+      chip.style.background = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+      chip.title = 'rgb(' + c.join(', ') + ')';
+      el.swatches.appendChild(chip);
+    }
+    el.swatches.setAttribute('aria-label', palette.name + ': ' + colors.length + ' inks');
   }
 
   /* ------------------------------------------------------------------ */
@@ -283,27 +501,50 @@
     });
   }
 
-  function buildGlitchList() {
-    el.glitchList.textContent = '';
-    glitches.order.forEach(function (id, index) {
-      const meta = D.GLITCHES.find(function (g) { return g.id === id; });
+  // The effects stack: only what is switched on is on screen, added through
+  // the "add" list rather than a wall of thirteen toggles (the model Dither
+  // Boy 6 moved to, and the reason its rail stays readable). `glitches.order`
+  // still holds every id, so presets, JSON export and `deriveGlitches()` keep
+  // the shape they always had.
+  function activeEffects() {
+    return glitches.order.filter(function (id) { return glitches.on[id]; });
+  }
+
+  function effectMeta(id) {
+    return D.GLITCHES.find(function (g) { return g.id === id; }) || { name: id, hint: '' };
+  }
+
+  function buildEffectList() {
+    el.effectList.textContent = '';
+    const active = activeEffects();
+    if (!active.length) {
+      const empty = document.createElement('p');
+      empty.className = 'stack-empty';
+      empty.textContent = 'No effects. The dither prints straight.';
+      el.effectList.appendChild(empty);
+      return;
+    }
+    active.forEach(function (id, index) {
+      const meta = effectMeta(id);
       const row = document.createElement('div');
-      row.className = 'glitch';
+      row.className = 'stack-row';
+      row.setAttribute('data-effect', id);
       row.title = meta.hint;
 
-      const check = document.createElement('label');
-      check.className = 'check';
-      const toggle = document.createElement('input');
-      toggle.type = 'checkbox';
-      toggle.checked = !!glitches.on[id];
-      toggle.setAttribute('aria-label', meta.name);
+      const top = document.createElement('div');
+      top.className = 'stack-top';
+      const indexChip = document.createElement('span');
+      indexChip.className = 'stack-index';
+      indexChip.textContent = String(index + 1);
       const name = document.createElement('span');
+      name.className = 'stack-name';
       name.textContent = meta.name;
-      check.appendChild(toggle);
-      check.appendChild(name);
+      const tools = document.createElement('div');
+      tools.className = 'stack-tools';
+      top.appendChild(indexChip);
+      top.appendChild(name);
+      top.appendChild(tools);
 
-      const controls = document.createElement('div');
-      controls.className = meta.modes ? 'glitch-row has-mode' : 'glitch-row';
       let mode = null;
       if (meta.modes) {
         mode = document.createElement('select');
@@ -315,40 +556,52 @@
           mode.appendChild(option);
         });
         mode.value = glitches.mode[id];
-        mode.disabled = !glitches.on[id];
-        controls.appendChild(mode);
+        mode.className = 'stack-mode';
       }
+
       const amount = document.createElement('input');
       amount.type = 'range';
       amount.min = '0';
       amount.max = '100';
       amount.step = '1';
       amount.value = String(glitches.amount[id]);
-      amount.disabled = !glitches.on[id];
       amount.setAttribute('aria-label', meta.name + ' amount');
+
       const up = document.createElement('button');
-      up.className = 'btn btn-mini';
-      up.textContent = '↑';
-      up.title = 'Move up';
+      up.className = 'icon-btn';
+      up.type = 'button';
+      up.textContent = '▲';
+      up.title = 'Move earlier in the stack';
       up.disabled = index === 0;
       const down = document.createElement('button');
-      down.className = 'btn btn-mini';
-      down.textContent = '↓';
-      down.title = 'Move down';
-      down.disabled = index === glitches.order.length - 1;
-      controls.appendChild(amount);
-      controls.appendChild(up);
-      controls.appendChild(down);
-      row.appendChild(check);
-      row.appendChild(controls);
-      el.glitchList.appendChild(row);
+      down.className = 'icon-btn';
+      down.type = 'button';
+      down.textContent = '▼';
+      down.title = 'Move later in the stack';
+      down.disabled = index === active.length - 1;
+      const remove = document.createElement('button');
+      remove.className = 'icon-btn';
+      remove.type = 'button';
+      remove.textContent = '✕';
+      remove.title = 'Remove from the stack';
+      remove.setAttribute('aria-label', 'Remove ' + meta.name);
 
-      toggle.addEventListener('change', function () {
-        glitches.on[id] = toggle.checked;
-        amount.disabled = !toggle.checked;
-        if (mode) mode.disabled = !toggle.checked;
-        render(true);
-      });
+      tools.appendChild(up);
+      tools.appendChild(down);
+      tools.appendChild(remove);
+
+      // Two lines per effect: index + name + tools, then the amount with the
+      // effect's mode beside it. The name gets the whole first line that way,
+      // which it needs ("Chromatic aberration" must not truncate).
+      const line = document.createElement('div');
+      line.className = 'stack-line';
+      line.appendChild(amount);
+      if (mode) line.appendChild(mode);
+
+      row.appendChild(top);
+      row.appendChild(line);
+      el.effectList.appendChild(row);
+
       if (mode) {
         mode.addEventListener('change', function () {
           glitches.mode[id] = mode.value;
@@ -360,35 +613,62 @@
         schedulePreview();
       });
       amount.addEventListener('change', function () { render(true); });
-      up.addEventListener('click', function () { moveGlitch(index, -1); });
-      down.addEventListener('click', function () { moveGlitch(index, 1); });
+      up.addEventListener('click', function () { moveEffect(index, -1); });
+      down.addEventListener('click', function () { moveEffect(index, 1); });
+      remove.addEventListener('click', function () { removeEffect(id); });
     });
   }
 
-  function rebuildGlitchValues() {
-    const rows = el.glitchList.children;
-    for (let i = 0; i < rows.length; i++) {
-      const id = glitches.order[i];
-      const toggle = rows[i].querySelector('input[type="checkbox"]');
-      const amount = rows[i].querySelector('input[type="range"]');
-      const mode = rows[i].querySelector('select');
-      toggle.checked = !!glitches.on[id];
-      amount.value = String(glitches.amount[id]);
-      amount.disabled = !glitches.on[id];
-      if (mode) {
-        mode.value = glitches.mode[id];
-        mode.disabled = !glitches.on[id];
-      }
-    }
+  // The "add" list offers what is not already running, so it doubles as the
+  // catalogue of everything this press can do to a finished dither.
+  function syncEffectChoices() {
+    el.effectAdd.textContent = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Choose an effect…';
+    el.effectAdd.appendChild(placeholder);
+    D.GLITCHES.forEach(function (g) {
+      if (glitches.on[g.id]) return;
+      const option = document.createElement('option');
+      option.value = g.id;
+      option.textContent = g.name;
+      el.effectAdd.appendChild(option);
+    });
   }
 
-  function moveGlitch(index, delta) {
+  function addEffect(id) {
+    const meta = D.GLITCHES.find(function (g) { return g.id === id; });
+    if (!meta || glitches.on[id]) return;
+    glitches.on[id] = true;
+    if (!glitches.amount[id]) glitches.amount[id] = 50;
+    if (meta.modes && !glitches.mode[id]) glitches.mode[id] = meta.modes[0].id;
+    // Appended, so a new effect lands at the end of the pipeline.
+    glitches.order = glitches.order.filter(function (x) { return x !== id; }).concat([id]);
+    buildEffectList();
+    syncEffectChoices();
+    syncGroupNotes();
+    render(true);
+  }
+
+  function removeEffect(id) {
+    if (!glitches.on[id]) return;
+    glitches.on[id] = false;
+    buildEffectList();
+    syncEffectChoices();
+    syncGroupNotes();
+    render(true);
+  }
+
+  function moveEffect(index, delta) {
+    const active = activeEffects();
     const target = index + delta;
-    if (target < 0 || target >= glitches.order.length) return;
-    const id = glitches.order[index];
-    glitches.order[index] = glitches.order[target];
-    glitches.order[target] = id;
-    buildGlitchList();
+    if (target < 0 || target >= active.length) return;
+    const id = active[index];
+    active[index] = active[target];
+    active[target] = id;
+    // The inactive rest keeps no order worth preserving.
+    glitches.order = active.concat(glitches.order.filter(function (x) { return !glitches.on[x]; }));
+    buildEffectList();
     render(true);
   }
 
@@ -517,7 +797,6 @@
     state.settings = D.mergeSettings(next);
     readGlitchState(next && next.glitches);
     syncUI();
-    buildGlitchList();
     render(true);
     if (label) el.statStatus.textContent = label;
   }
@@ -663,7 +942,25 @@
     return true;
   }
 
+  // The viewport update mode, which is how pro tools handle expensive previews:
+  // Full always renders at working resolution, Live renders a half-resolution
+  // frame while a control is moving, and Still waits until the control settles
+  // (for slow machines and the heavy recipes).
+  const QUALITY_NOTES = {
+    full: 'Full — every move renders at working resolution',
+    live: 'Live — half-res while dragging',
+    still: 'Still — renders when a control settles',
+  };
+
   function schedulePreview() {
+    if (state.quality === 'full') {
+      render(true);
+      return;
+    }
+    if (state.quality === 'still') {
+      el.statStatus.textContent = 'Adjusting — release to render';
+      return;
+    }
     if (state.rafPending) return;
     state.rafPending = true;
     window.requestAnimationFrame(function () {
@@ -672,8 +969,54 @@
     });
   }
 
+  function setQuality(mode) {
+    if (['full', 'live', 'still'].indexOf(mode) < 0) mode = 'live';
+    state.quality = mode;
+    Array.prototype.forEach.call(el.quality.children, function (btn) {
+      const on = btn.getAttribute('data-value') === mode;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    el.qualityNote.textContent = QUALITY_NOTES[mode];
+    return state.quality;
+  }
+
   function algorithmById(id) {
     return D.ALGORITHMS.find(function (a) { return a.id === id; }) || D.ALGORITHMS[0];
+  }
+
+  // One place where the algorithm and palette change, so the select, the
+  // stepper arrows, a preset and a test hook all take the same path.
+  function setAlgorithm(id) {
+    state.settings.algorithm = id;
+    el.algorithm.value = id;
+    syncScreenRows();
+    render(true);
+    syncGroupNotes();
+  }
+
+  function stepAlgorithm(delta) {
+    const list = D.ALGORITHMS;
+    const at = list.findIndex(function (a) { return a.id === state.settings.algorithm; });
+    const next = list[(Math.max(0, at) + delta + list.length) % list.length];
+    setAlgorithm(next.id);
+    return next.id;
+  }
+
+  function setPalette(id) {
+    state.settings.palette = id;
+    el.palette.value = id;
+    el.thresholdRow.hidden = id !== 'bw';
+    buildSwatches();
+    render(true);
+    syncGroupNotes();
+  }
+
+  function stepPalette(delta) {
+    const at = D.PALETTES.findIndex(function (p) { return p.id === state.settings.palette; });
+    const next = D.PALETTES[(Math.max(0, at) + delta + D.PALETTES.length) % D.PALETTES.length];
+    setPalette(next.id);
+    return next.id;
   }
 
   function paletteById(id) {
@@ -690,6 +1033,9 @@
     el.statColors.textContent = res.colors.toLocaleString('en-US');
     el.statRender.textContent = Math.round(res.ms) + ' ms';
     el.statStatus.textContent = full ? 'Ready' : 'Preview';
+    // Every render refreshes the station summaries, so a change made in any
+    // panel is reflected on the closed headers above it.
+    syncGroupNotes();
   }
 
   /* ------------------------------------------------------------------ */
@@ -766,6 +1112,7 @@
     state.zoom = null;
     applyZoom();
     render(true);
+    syncGroupNotes();
     el.statStatus.textContent = capped ? 'Scaled to ' + MAX_SOURCE + 'px' : 'Ready';
   }
 
@@ -1050,7 +1397,8 @@
     buildPaletteSelect();
     buildToneMapSelect();
     buildTextSelect();
-    buildGlitchList();
+    buildEffectList();
+    syncEffectChoices();
     buildPresetSelect();
 
     BINDINGS.forEach(function (binding) {
@@ -1066,28 +1414,33 @@
       });
     });
 
-    el.algorithm.addEventListener('change', function () {
-      state.settings.algorithm = el.algorithm.value;
-      syncScreenRows();
-      render(true);
+    el.algorithm.addEventListener('change', function () { setAlgorithm(el.algorithm.value); });
+    el.algorithmPrev.addEventListener('click', function () { stepAlgorithm(-1); });
+    el.algorithmNext.addEventListener('click', function () { stepAlgorithm(1); });
+
+    el.palette.addEventListener('change', function () { setPalette(el.palette.value); });
+    el.palettePrev.addEventListener('click', function () { stepPalette(-1); });
+    el.paletteNext.addEventListener('click', function () { stepPalette(1); });
+
+    el.effectAdd.addEventListener('change', function () {
+      const id = el.effectAdd.value;
+      el.effectAdd.value = '';
+      if (id) addEffect(id);
     });
 
-    el.palette.addEventListener('change', function () {
-      state.settings.palette = el.palette.value;
-      el.thresholdRow.hidden = state.settings.palette !== 'bw';
-      render(true);
+    Array.prototype.forEach.call(el.quality.children, function (btn) {
+      btn.addEventListener('click', function () { setQuality(btn.getAttribute('data-value')); });
     });
 
     el.seed.addEventListener('change', function () {
       state.settings.seed = (parseInt(el.seed.value, 10) || 0) >>> 0;
-      el.seedValue.textContent = String(state.settings.seed);
+      el.seed.value = state.settings.seed;
       render(true);
     });
 
     el.reseed.addEventListener('click', function () {
       state.settings.seed = (Math.random() * 0xffffffff) >>> 0;
       el.seed.value = state.settings.seed;
-      el.seedValue.textContent = String(state.settings.seed);
       render(true);
     });
 
@@ -1258,6 +1611,10 @@
 
     window.addEventListener('resize', applyZoom);
 
+    buildJump();
+    initGroups();
+    loadGroups();
+    setQuality(state.quality);
     syncUI();
     bindVideo();
     loadDemo();
@@ -1307,10 +1664,13 @@
   function videoStatusLine() {
     if (!video) return;
     const s = video.stats();
-    el.statFile.textContent = 'video frame ' + Math.max(0, s.frame - 1);
-    el.statStatus.textContent = 'Video ' + s.fps + ' fps' +
-      (s.dropped ? ' · ' + s.dropped + ' dropped' : '') +
-      (s.recording ? ' · REC' : '');
+    const frame = Math.max(0, s.frame - 1);
+    const tail = (s.dropped ? ' · ' + s.dropped + ' dropped' : '') + (s.recording ? ' · REC' : '');
+    el.statFile.textContent = 'video frame ' + frame;
+    el.statStatus.textContent = 'Video ' + s.fps + ' fps' + tail;
+    if (el.videoReadout) {
+      el.videoReadout.textContent = 'frame ' + frame + ' · ' + s.fps + ' fps' + tail;
+    }
   }
 
   function renderVideoFrame(imageData, frameIndex) {
@@ -1337,7 +1697,9 @@
     el.videoFpsRow.hidden = !show;
     el.videoTemporalRow.hidden = !show;
     el.videoRecordRow.hidden = !show;
+    el.transport.hidden = !show;
     el.videoToggle.disabled = !show;
+    syncGroupNotes();
   }
 
   async function startVideo(kind, file) {
@@ -1354,6 +1716,7 @@
     }
     videoState.ready = true;
     state.videoOn = true;
+    state.stillName = state.name;   // so the rail reads the still again afterwards
     state.name = kind === 'webcam' ? 'webcam' : 'video';
     state.zoom = null;
     videoShowRows(true);
@@ -1370,6 +1733,7 @@
     video.synthetic(width, height);
     videoState.ready = true;
     state.videoOn = true;
+    state.stillName = state.name;
     state.name = 'video';
     state.zoom = null;
     videoShowRows(true);
@@ -1383,13 +1747,16 @@
     if (!state.videoOn) return;
     state.videoOn = false;
     videoState.ready = false;
+    state.name = state.stillName || state.name;
     if (video) {
       if (video.recording) video.stopRecording();
       video.release();
     }
     el.videoToggle.textContent = 'Play';
     videoShowRows(false);
-    videoStatus('Pick a source above to run video through the press.');
+    el.statFile.textContent = state.name;
+    el.statStatus.textContent = 'Ready';
+    videoStatus('Play a clip or the webcam through the press. Transport and frame readout sit under the viewport.');
   }
 
   function bindVideo() {
@@ -1470,6 +1837,10 @@
         colors: state.result ? state.result.colors : null,
         ms: state.result ? Math.round(state.result.ms) : null,
         zoom: el.statZoom.textContent,
+        quality: state.quality,
+        effects: activeEffects(),
+        openGroups: GROUPS.filter(function (g) { return groupOpen(g.id); })
+          .map(function (g) { return g.id; }),
         glitches: deriveGlitches().map(function (g) {
           return g.id + ':' + g.amount + (g.mode ? ':' + g.mode : '');
         }),
@@ -1487,6 +1858,24 @@
       img.src = url;
     },
     deriveGlitches: deriveGlitches,
+    // --- the effects stack and the rail ----------------------------------
+    activeEffects: activeEffects,
+    addEffect: function (id) { addEffect(id); return activeEffects(); },
+    removeEffect: function (id) { removeEffect(id); return activeEffects(); },
+    moveEffect: function (index, delta) { moveEffect(index, delta); return activeEffects(); },
+    groups: function () {
+      return GROUPS.map(function (g) {
+        const group = groupEl(g.id);
+        const note = group ? group.querySelector('.group-note') : null;
+        return { id: g.id, open: groupOpen(g.id), note: note ? note.textContent : '' };
+      });
+    },
+    setGroup: function (id, open) { setGroup(id, open); return groupOpen(id); },
+    quality: function () { return state.quality; },
+    setQuality: function (mode) { return setQuality(mode); },
+    swatches: function () { return el.swatches.children.length; },
+    stepAlgorithm: function (delta) { return stepAlgorithm(delta === undefined ? 1 : delta); },
+    stepPalette: function (delta) { return stepPalette(delta === undefined ? 1 : delta); },
     setText: function (on, ramp, size) {
       text.on = !!on;
       if (ramp) text.ramp = ramp;

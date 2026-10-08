@@ -1,30 +1,39 @@
-/* style.css — Dither Studio.
+/* Dither Studio — instrument panel, print shop.
  *
- * World: "instrument panel, print shop" — a dark press console; the canvas is
- * a proof sheet under inspection. Chrome recedes, one accent, mono type,
- * hairlines. Tokens come from the repository DESIGN.md and are not forked.
+ * The world (DESIGN.md): "a dark instrument panel for a gallery at night".
+ * This project's voice inside it: a *press console*. The chrome is a compact
+ * rail of collapsible stations — Source, Press, Tone, Ink, Detail, Effects,
+ * Motion, Type, Presets — and the proof sheet is the hero. Density and grouping
+ * follow how professional dithering tools organise themselves (Dither Boy 6:
+ * arrow-stepped algorithm browsing, an additive reorderable effects stack, and
+ * a viewport-bottom Full/Live/Still update control); the tokens, the mono face
+ * and the hairlines are the house's.
  */
 
 :root {
-  --bg: #0e0f13;
-  --panel: #15171d;
-  --panel-2: #1b1e26;
-  --line: #262a34;
-  --text: #e8eaf0;
-  --muted: #8b91a3;
-  --accent: #7aa2ff;
+  --bg: #0e0f13;        /* page ground            */
+  --panel: #15171d;     /* rails, headers          */
+  --panel-2: #1b1e26;   /* controls, raised chips  */
+  --line: #262a34;      /* hairlines and borders   */
+  --text: #e8eaf0;      /* primary text            */
+  --muted: #8b91a3;     /* labels, secondary text  */
+  --accent: #7aa2ff;    /* the single accent       */
   --radius: 8px;
   --font: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+
+  /* Local, non-forked refinements: the well the artifact sits in, and the
+     measured heights that keep every control on the same rhythm. */
+  --well: #0b0c10;
+  --row: 26px;
+  --gap: 7px;
 }
 
 * { box-sizing: border-box; }
 
-html, body {
-  margin: 0;
-  height: 100%;
-}
+html, body { height: 100%; }
 
 body {
+  margin: 0;
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   background: var(--bg);
@@ -36,79 +45,320 @@ body {
 /* An author `display` must never defeat the `hidden` attribute. */
 [hidden] { display: none !important; }
 
-/* ---------- panel ---------- */
+/* ---------- the rail ---------- */
 
 .panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 18px 16px;
-  overflow-y: auto;
 }
 
+.rail-head { padding: 14px 14px 8px; }
+
 .brand {
-  margin: 0 0 8px;
-  font-size: 20px;
-  letter-spacing: 0.04em;
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: 0.01em;
 }
 
 .brand span { color: var(--accent); }
 
-.intro { margin: 0 0 20px; }
-
-.small {
-  margin: 22px 0 10px;
+.tagline {
+  margin: 4px 0 0;
   font-size: 11px;
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
   color: var(--muted);
 }
 
-.muted { color: var(--muted); }
-
-.hint {
-  margin-top: 22px;
-  line-height: 1.8;
+/* Section jump strip: the rail is long, so the stations are also a row of
+   chips. Click scrolls the station open; the visible one is marked. */
+/* Chips wrap rather than hide: ten stations, all reachable, none truncated. */
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 10px 9px;
+  border-bottom: 1px solid var(--line);
 }
 
-.mini {
+.jump-chip {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: 11px/1.4 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.jump-chip:hover { color: var(--text); border-color: var(--line); }
+
+.jump-chip[aria-current="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.rail-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px 12px;
+  scroll-behavior: smooth;
+}
+
+.rail-hint {
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
   font-size: 11px;
-  line-height: 1.6;
-  margin: 8px 0 12px;
+  color: var(--muted);
 }
 
-/* ---------- buttons ---------- */
+.rail-hint b { color: var(--text); }
+
+/* ---------- stations (collapsible groups) ---------- */
+
+.group { border-bottom: 1px solid var(--line); }
+
+.group:last-child { border-bottom: none; }
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 2px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-head:hover .group-name { color: var(--accent); }
+
+.group-name {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color 140ms ease;
+}
+
+.group-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.caret {
+  flex: 0 0 auto;
+  width: 9px;
+  font-size: 9px;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.group[data-open="false"] .caret { transform: rotate(-90deg); }
+
+.group-body {
+  display: grid;
+  gap: var(--gap);
+  padding: 2px 2px 12px;
+}
+
+.group[data-open="false"] .group-body { display: none; }
+
+.group-body > .hint { margin: 1px 0 0; }
+
+/* ---------- rows ---------- */
 
 .buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 6px;
 }
 
-.buttons-1 {
-  grid-template-columns: 1fr;
-  margin-top: 4px;
+.buttons-1 { grid-template-columns: 1fr; }
+
+.field {
+  display: grid;
+  gap: 2px;
+}
+
+.field > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.field > span > em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.check input { accent-color: var(--accent); }
+
+.hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.hint b { color: var(--text); font-weight: 600; }
+
+/* stepper rows: select + ◀ ▶, the way pro tools let you browse a list */
+.row-stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px 24px;
+  gap: 4px;
+}
+
+.btn-step {
+  padding: 0;
+  height: var(--row);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.seed-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 6px; }
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 2px 0 1px;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+/* ---------- controls ---------- */
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+select,
+input[type="number"],
+input[type="text"] {
+  width: 100%;
+  height: var(--row);
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+select { cursor: pointer; }
+
+input[type="color"] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+.ink-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .btn {
+  height: var(--row);
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: var(--panel-2);
   color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 8px 10px;
   font: inherit;
+  font-size: 12px;
   cursor: pointer;
-  transition: border-color 140ms ease;
+  transition: border-color 140ms ease, color 140ms ease;
 }
 
 .btn:hover { border-color: var(--accent); }
 
 .btn:active { filter: brightness(0.94); }
 
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn:disabled:hover { border-color: var(--line); }
 
@@ -121,243 +371,223 @@ body {
 
 .btn-primary:hover { filter: brightness(1.1); }
 
-.btn-mini {
-  padding: 5px 9px;
+.btn-mini { height: 24px; padding: 0 8px; font-size: 11.5px; }
+
+/* segmented control: one choice out of three, no dropdown round-trip */
+.seg {
+  display: inline-flex;
+  height: var(--row);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  padding: 0 9px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.seg-btn:first-child { border-left: none; }
+
+.seg-btn:hover { color: var(--text); }
+
+.seg-btn.is-on { background: var(--panel-2); color: var(--accent); font-weight: 600; }
+
+/* ---------- effects stack ---------- */
+
+.stack { display: grid; gap: 5px; }
+
+.stack-row {
+  display: grid;
+  gap: 3px;
+  padding: 6px 7px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+.stack-top {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.stack-index {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.stack-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
 }
 
-/* Video: the record button reads as a transport control, not a toggle. */
-#video-record { border-color: #6b3b3b; }
+.stack-tools { display: flex; gap: 3px; }
 
-#video-record:hover { border-color: #c2564f; color: #ffd0cc; }
-
-/* ---------- fields ---------- */
-
-.field {
-  display: block;
-  margin-bottom: 12px;
-}
-
-.field span {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--muted);
-}
-
-.field em {
-  font-style: normal;
-  color: var(--accent);
-}
-
-.field input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.field select,
-.field input[type="number"] {
-  width: 100%;
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 7px 8px;
-  font: inherit;
-}
-
-.check {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-  color: var(--muted);
-}
-
-.check input { accent-color: var(--accent); }
-
-/* ---------- ink row ---------- */
-
-.ink-row {
-  display: flex;
-  gap: 14px;
-  margin: 2px 0 10px;
-}
-
-input[type="color"] {
-  width: 36px;
-  height: 26px;
+.icon-btn {
+  width: 20px;
+  height: 20px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: none;
-  cursor: pointer;
-}
-
-input[type="color"]:hover { border-color: var(--accent); }
-
-/* ---------- glitch stack ---------- */
-
-.glitch {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 8px;
-  margin-bottom: 8px;
-}
-
-.glitch .check {
-  margin-bottom: 6px;
-  color: var(--text);
-}
-
-.glitch-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.glitch-row.has-mode { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-
-.glitch-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.glitch-row select {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px 5px;
+  color: var(--muted);
   font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.icon-btn:hover { color: var(--text); border-color: var(--line); }
+
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.stack-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.stack-row select { width: auto; min-width: 84px; height: 21px; font-size: 11px; }
+
+.stack-empty {
+  padding: 6px 2px;
   font-size: 11px;
+  color: var(--muted);
 }
 
 /* ---------- stage ---------- */
 
 .stage {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  min-width: 0;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
 }
 
 .statusbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
-  padding: 12px 18px;
-  background: var(--panel);
+  gap: 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11px;
   color: var(--muted);
 }
 
-.statusbar b {
-  color: var(--text);
-  margin-left: 6px;
-}
+.statusbar b { color: var(--text); font-weight: 600; }
 
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-}
-
-.toolbar .grow { flex: 1; }
-
-.readout b {
-  color: var(--text);
-  margin-left: 4px;
-}
-
-.inline {
-  display: flex;
   align-items: center;
   gap: 6px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
 }
 
-.inline select {
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 5px 6px;
-  font: inherit;
-}
+.grow { flex: 1 1 auto; }
+
+.readout { font-size: 11px; }
 
 .canvas-wrap {
   position: relative;
   min-height: 0;
   overflow: auto;
-  background: #0b0c10;
+  background: var(--well);
 }
 
 .canvas-frame {
   display: grid;
-  place-items: safe center;
-  min-width: 100%;
+  place-items: center;
   min-height: 100%;
-  padding: 20px;
+  padding: 24px;
 }
 
 #canvas {
-  display: block;
   image-rendering: pixelated;
-  background: #0b0c10;
-  outline: 1px solid var(--line);
-  touch-action: none;
+  background:
+    repeating-conic-gradient(#141519 0% 25%, #0f1014 0% 50%) 50% / 16px 16px;
+  box-shadow: 0 0 0 1px var(--line);
   cursor: grab;
+}
+
+#canvas.alpha-on {
+  background:
+    repeating-conic-gradient(#1b1e26 0% 25%, #14161c 0% 50%) 50% / 16px 16px;
 }
 
 #canvas.panning { cursor: grabbing; }
 
-/* A real alpha channel needs something behind it to read as transparent. */
-#canvas.alpha-on {
-  background-color: #101218;
-  background-image:
-    linear-gradient(45deg, #1c1f28 25%, transparent 25%, transparent 75%, #1c1f28 75%),
-    linear-gradient(45deg, #1c1f28 25%, transparent 25%, transparent 75%, #1c1f28 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
+.canvas-wrap.drag-over { outline: 1px dashed var(--accent); outline-offset: -6px; }
+
+/* viewport bar: update mode on the left, playback in the middle, state right */
+.viewport-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11px;
+  color: var(--muted);
 }
 
-/* ---------- focus ---------- */
+.transport { display: flex; align-items: center; gap: 6px; }
 
+/* ---------- states ---------- */
+
+:focus-visible,
 .btn:focus-visible,
+.seg-btn:focus-visible,
+.jump-chip:focus-visible,
+.icon-btn:focus-visible,
+.group-head:focus-visible,
 .check input:focus-visible,
 .field select:focus-visible,
 .field input:focus-visible,
 .inline select:focus-visible,
-.glitch-row select:focus-visible,
+.stack-row select:focus-visible,
 input[type="color"]:focus-visible,
 #canvas:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* ---------- narrow screens ---------- */
+::selection { background: var(--accent); color: #0b0c10; }
 
+/* the panel scrolls; keep the bar honest on short windows */
+@media (max-height: 620px) {
+  .tagline { display: none; }
+}
+
+/* contraction, not redesign (DESIGN.md) */
 @media (max-width: 720px) {
-  body {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .panel {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    max-height: 45vh;
-  }
+  body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .stage { order: 1; }
+  .panel { order: 2; max-height: 45vh; border-right: none; border-top: 1px solid var(--line); }
+  .toolbar { flex-wrap: wrap; }
+  .viewport-bar { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
+  .caret,
+  .jump-chip,
+  .group-name,
+  .btn,
+  .seg-btn,
+  .icon-btn { transition: none; }
+  .rail-scroll { scroll-behavior: auto; }
 }

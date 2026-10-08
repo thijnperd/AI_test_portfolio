@@ -1,7 +1,7 @@
 # Dither Studio — browser image dithering
 
 A zero-dependency browser print shop for pixels: load an image (or a video),
-pick an ink set, choose a press, stack a few glitches, and export the proof as a
+pick an ink set, choose a press, stack a few effects, and export the proof as a
 PNG (or the video as WebM). A free, offline alternative to commercial dithering
 tools such as Dither Boy — open `index.html` in a browser and it runs; no build
 step, no server, no packages.
@@ -20,8 +20,8 @@ with `Ctrl+V`, or use **Open image…**.
 
 | Control | What it does |
 |---|---|
-| **Algorithm** | The dither method in six groups: Basic (threshold), Ordered (18 screens), Stochastic (7 noise families), **Structure-aware** (3 screens that read the image's own contours), Mixing (3 Yliluoma variants), Error diffusion (14 kernels). |
-| **Palette** | B&W (the 1-bit mono path) or one of 23 retro/constructed ink sets; colour modes snap every pixel to the nearest palette colour. |
+| **Algorithm** | The dither method in six groups: Basic (threshold), Ordered (18 screens), Stochastic (7 noise families), **Structure-aware** (3 screens that read the image's own contours), Mixing (3 Yliluoma variants), Error diffusion (14 kernels). Step through the list with the **◀ ▶** arrows beside the picker. |
+| **Palette** | B&W (the 1-bit mono path) or one of 23 retro/constructed ink sets; colour modes snap every pixel to the nearest palette colour. The **swatch strip** under the picker shows the actual inks, and ◀ ▶ steps the palette list. |
 | **Pixel size** | 1–16. The image is box-averaged down to this chunk size, dithered, then upscaled without smoothing — chunky pixel-art output. |
 | **Threshold** | Exposure bias for the mono path (B&W palette): higher = darker, lower = brighter. Hidden in colour modes. |
 | **Strength** | 0 % collapses any screen to a plain threshold, 100 % is the published screen, above that pushes it. |
@@ -33,10 +33,27 @@ with `Ctrl+V`, or use **Open image…**.
 | **Ink** | Eleven tone maps that re-ink the finished dither, so 1-bit stays exactly two inks; the custom entry takes your own ink and paper. |
 | **Transparency** | How the source's alpha is handled: flatten onto paper, dither the matte to hard 0/255 edges, or keep a real PNG alpha channel. |
 | **Text mode** | Prints the proof as characters (ASCII, blocks, shades, hex, binary), with `.txt` export. |
-| **Glitch stack** | Thirteen post-dither effects that run top to bottom; reorder with ↑↓, each with its own amount and, where it has them, a mode. |
-| **Glow** | A blurred screen-blend pass after the glitches (radius + intensity), added in linear light. |
-| **Video** | Play a video file or the webcam through the whole press, with a frame rate, a temporal dither rule and WebM recording. |
-| **Presets** | Twenty-six built-in recipes, including the three structure-aware looks; export/import the current settings as JSON. |
+| **Effects** | Thirteen post-dither effects, added one at a time to a stack that runs top to bottom. Each row carries its amount, its mode where it has one, and ▲ ▼ ✕ to reorder or remove it. Nothing reaches the press until you add it. |
+| **Glow** | A blurred screen-blend pass after the effects (radius + intensity), added in linear light. |
+| **Motion** | Play a video file or the webcam through the whole press, with a frame rate, a temporal dither rule and WebM recording. Playback is driven from the transport under the viewport. |
+| **Update** | Under the viewport: **Full** renders working resolution on every move, **Live** (default) renders a half-resolution frame while you drag, and **Still** waits until the control settles — the option for slow machines and heavy recipes. |
+| **Presets** | Twenty-one built-in recipes, including the three structure-aware looks; export/import the current settings as JSON. |
+
+### The console
+
+The rail is a stack of **stations** — Source, Press, Tone, Ink, Detail, Effects, Glow,
+Motion, Type, Presets — and every station collapses. A closed station keeps a
+one-line summary on its header (`Press · Bayer 8×8 · C64 · 16c`, `Tone · ct 1.20`,
+`Effects · 3 in stack`), so what is set stays readable without opening anything.
+The chip strip above the rail jumps to a station and opens it; the chip for the
+station at the top of the rail is highlighted while you scroll, so the strip
+doubles as a position readout. Which stations are open is remembered in
+`localStorage`.
+
+Under the viewport sits the **update mode** (Full / Live / Still) with the
+playback transport beside it once a video source is loaded. The status bar above
+the canvas stays the instrument readout: file, size, algorithm, palette, colour
+count, render time, status.
 
 ### Keys
 
@@ -106,7 +123,12 @@ proportions.
 | Grey ramps | 2-bit (4), 3-bit (8), 4-bit (16) |
 | Single-ink sets | Amber, Sepia, Cyan, Blueprint, Matrix green, Ice |
 
-## The glitch stack (13)
+## The effects stack (13)
+
+The Effects station starts empty: pick an effect from **Add to the stack** and it
+lands at the end of the pipeline, where you can reorder it with the row arrows or
+take it out with ✕. The rail only ever shows what is actually running, which is
+why a photo can look untouched while still offering thirteen effects.
 
 | Effect | What it does |
 |---|---|
@@ -230,8 +252,8 @@ around 240 ms per frame at 720×404 in video mode.
 
 | File | Purpose |
 |---|---|
-| `index.html` | Page structure, controls, script loading order |
-| `style.css` | Layout and the dark "print shop" instrument-panel theme |
+| `index.html` | Page structure: the station rail, the stage, the status bar, the toolbar and the viewport bar; script loading order |
+| `style.css` | The console: station rhythm, stepper rows, the segmented update switch, the effects stack and the swatch strip, in the dark "print shop" theme |
 | `dither.js` | DOM-free core: RNG, matrices, masks, structure-aware screens, algorithms, palettes, mixing plans, adjustments, tone maps, alpha, glitch stack, glow, the temporal rules, and `process()` |
 | `video.js` | Browser-only video mode: frame source (file / webcam / generated clip), playback clock, frame dropping, WebM recording |
 | `app.js` | Canvas rendering, controls, load/drop/paste, zoom/pan/compare, presets, text mode, video wiring, export |
@@ -270,10 +292,22 @@ bash tools/check.sh "dither studio/index.html" --expect canvas \
 The page exposes `window.__dither` for checks and experimentation: `stats()`,
 `applyPreset(id)`, `setSetting(path, value)`, `randomize()`, `canvasColors()`
 (unique colours actually drawn on the canvas), `canvasSample()`/`canvasHash()`
-(compare two frames), `setText()`/`textGrid()`, `alphaStats()`, and the video
-hooks `videoSynthetic(w, h)`, `videoTick(count, atFrame)`, `videoPlay()`,
+(compare two frames), `setText()`/`textGrid()`, `alphaStats()`, the console
+hooks `groups()`, `setGroup(id, open)`, `quality()`, `setQuality(mode)`,
+`activeEffects()`, `addEffect(id)`, `removeEffect(id)`, `moveEffect(i, delta)`,
+`swatches()`, `stepAlgorithm(delta)`, `stepPalette(delta)`, and the video hooks
+`videoSynthetic(w, h)`, `videoTick(count, atFrame)`, `videoPlay()`,
 `videoPause()`, `videoTemporal(mode)`, `videoSettings(frame)`, `videoStats()`,
 `videoRecord(ms)`, `videoStop()`.
+
+```bash
+# the console: stations, the stack and the update modes
+bash tools/check.sh "dither studio/index.html" --eval "(function(){ var d = window.__dither; \
+  d.addEffect('scanlines'); d.addEffect('grain'); d.moveEffect(1, -1); \
+  return { stack: d.activeEffects(), rows: document.querySelectorAll('#effect-list .stack-row').length, \
+           effects: d.groups().find(g => g.id === 'effects').note, \
+           quality: d.setQuality('still'), swatches: d.swatches() }; })()"
+```
 
 ```bash
 # the video pipeline without a file or a camera

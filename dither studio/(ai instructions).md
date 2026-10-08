@@ -110,6 +110,40 @@ sheet.
     a playing video (`render()` returns early while `video.playing`), or slider
     drags would fight the frame loop for the canvas.
 
+## Console structure (the rail)
+
+`app.js` builds the rail as a list of **stations** (`GROUPS`: source, press,
+tone, ink, detail, effects, glow, motion, type, preset). The rules that keep it
+navigable:
+
+1. **Everything lives in a station.** A new control goes inside an existing
+   station's `.group-body` — never as a bare row in the rail — and the station's
+   header carries a one-line summary in `syncGroupNotes()` so a *closed* station
+   still reports what is set (`Press · Bayer 8×8 · C64 · 16c`). A new station is
+   added to `GROUPS`, gets a matching `<section id="g-<id>" class="group"
+   data-group="<id>">` with a `.group-head` button and a `#note-<id>` span, and
+   the jump strip picks it up automatically.
+2. **Station state is a `data-open` attribute, not `hidden`.** The body is
+   hidden by `.group[data-open="false"] .group-body { display: none }`, and
+   `[hidden] { display: none !important; }` guards the attributes elsewhere —
+   an author `display` silently defeating `hidden` is a known trap in
+   `DESIGN.md`. Never verify visibility by reading `.hidden`; measure the box.
+3. **The effects stack is additive.** `glitches.order` still lists every effect
+   and `glitches.on[]` says which run, so presets, JSON export and
+   `deriveGlitches()` keep their shape; the UI renders only the active ones in
+   `order` sequence. Adding appends, reordering rewrites `order` as
+   active-then-inactive, and `removeEffect` only clears the flag. Never rebuild
+   the stack from the DOM.
+4. **The update mode is decided in one place.** `schedulePreview()` honours
+   `state.quality` — `full` renders full-resolution on every input event, `live`
+   schedules the half-resolution preview on the next frame, `still` renders
+   nothing until `change`. Keep every new slider on the `input` → `change` pair
+   so all three modes work without special cases.
+5. **The rail scrolls, the stage does not shrink.** `body` is a fixed grid; the
+   station list is the scroll container and the viewport bar is a fixed row of
+   the stage. Respect the 720px contraction (stage first, rail capped) rather
+   than redesigning the layout.
+
 ## Extending
 
 ### Add an algorithm
@@ -144,9 +178,11 @@ automatically. The `bw` palette is special: it selects the mono path.
 2. Register it in `GLITCHES` (name, hint, and `modes` if it has any) and in
    `GLITCH_FNS`. The per-effect seed index comes from the `GLITCHES` order, so
    no separate index table needs updating.
-3. The panel builds itself — a glitch with `modes` gets a mode select in its
-   row. Add a test for the effect's rule, its determinism for a fixed seed, and
-   (if it has modes) that the mode reaches the core.
+3. The console builds itself — the effect appears in the **Add to the stack**
+   list, and adding it renders a row with its name, amount, its mode select if
+   `modes` exist, and the reorder/remove buttons. Nothing else needs updating.
+   Add a test for the effect's rule, its determinism for a fixed seed, and (if
+   it has modes) that the mode reaches the core.
 
 ### Add a tone map
 
@@ -238,10 +274,29 @@ bash tools/check.sh "dither studio/index.html" --eval "(function(){ \
            settings: d.videoSettings(7) }; })()"
 ```
 
+The console is checkable without clicking: `groups()` reports every station with
+its open state and header summary, `setGroup(id, open)` moves one, `quality()`
+and `setQuality(mode)` drive the update mode, and `addEffect` / `removeEffect` /
+`moveEffect` / `activeEffects` / `swatches` / `stepAlgorithm` / `stepPalette`
+cover the rest.
+
+```bash
+# stations, stack and update modes in one pass
+bash tools/check.sh "dither studio/index.html" --eval "(function(){ var d = window.__dither; \
+  d.addEffect('scanlines'); d.addEffect('grain'); d.moveEffect(1, -1); \
+  var ink = document.getElementById('alpha-mode'); ink.value = 'keep'; \
+  ink.dispatchEvent(new Event('change', { bubbles: true })); \
+  return { stack: d.activeEffects(), groups: d.groups(), quality: d.setQuality('still'), \
+           swatches: d.swatches(), alpha: d.alphaStats().count }; })()"
+```
+
 `window.__dither` exposes `stats()`, `applyPreset(id)`, `setSetting(path,
 value)`, `randomize()`, `exportTxt()`, `setText(on, ramp, size)`, `textGrid()`,
 `alphaStats()`, `canvasColors()`, `canvasSample(n)`, `canvasHash()`,
-`deriveGlitches()`, `loadDataURL(url, name)` and the video hooks
+`deriveGlitches()`, `loadDataURL(url, name)`, the console hooks `groups()`,
+`setGroup(id, open)`, `quality()`, `setQuality(mode)`, `activeEffects()`,
+`addEffect(id)`, `removeEffect(id)`, `moveEffect(index, delta)`, `swatches()`,
+`stepAlgorithm(delta)`, `stepPalette(delta)`, and the video hooks
 `videoSynthetic(w, h)`, `videoTick(count, atFrame)`, `videoPlay()`,
 `videoPause()`, `videoTemporal(mode)`, `videoSettings(frame)`, `videoStats()`,
 `videoRecord(ms)`, `videoStop()`. Prefer it over reading the DOM, and check for
