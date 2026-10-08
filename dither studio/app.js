@@ -18,6 +18,7 @@
   const MAX_SOURCE = 1600;
   const PREVIEW_SCALE = 0.5;
   const ZOOM_STEPS = [1, 2, 3, 4, 6, 8];
+  const MONO_STACK = '"SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace';
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -26,7 +27,18 @@
     algorithm: $('algorithm'), palette: $('palette'),
     pixelSize: $('pixel-size'), pixelSizeValue: $('pixel-size-value'),
     threshold: $('threshold'), thresholdValue: $('threshold-value'), thresholdRow: $('threshold-row'),
+    strength: $('strength'), strengthValue: $('strength-value'),
+    serpentine: $('serpentine'),
     seed: $('seed'), seedValue: $('seed-value'), reseed: $('reseed'),
+    black: $('black'), blackValue: $('black-value'),
+    white: $('white'), whiteValue: $('white-value'),
+    gamma: $('gamma'), gammaValue: $('gamma-value'),
+    toneMap: $('tone-map'), toneInk: $('tone-ink'), tonePaper: $('tone-paper'), inkCustom: $('ink-custom'),
+    alphaMode: $('alpha-mode'),
+    textMode: $('text-mode'), textCharset: $('text-charset'), textCharsetRow: $('text-charset-row'),
+    textSize: $('text-size'), textSizeValue: $('text-size-value'), textSizeRow: $('text-size-row'),
+    textExportRow: $('text-export-row'), exportTxt: $('export-txt'),
+    random: $('random'), copy: $('copy'),
     brightness: $('brightness'), brightnessValue: $('brightness-value'),
     contrast: $('contrast'), contrastValue: $('contrast-value'),
     saturation: $('saturation'), saturationValue: $('saturation-value'),
@@ -67,11 +79,26 @@
     order: D.GLITCHES.map(function (g) { return g.id; }),
     on: {},
     amount: {},
+    mode: {},
   };
   D.GLITCHES.forEach(function (g) {
     glitches.on[g.id] = false;
     glitches.amount[g.id] = 50;
+    glitches.mode[g.id] = g.modes ? g.modes[0].id : undefined;
   });
+
+  // Character ramps for text mode, darkest first. Kept here rather than in the
+  // core: the core prints pixels, the shell picks the type.
+  const TEXT_RAMPS = [
+    { id: 'ascii', name: 'ASCII  ·  .:-=+*#%@', chars: ' .:-=+*#%@' },
+    { id: 'blocks', name: 'Blocks · ░▒▓█', chars: ' ░▒▓█' },
+    { id: 'shades', name: 'Shades · .·:;+=xX$@', chars: ' .·:;+=xX$@' },
+    { id: 'hex', name: 'Hex · 0123456789ABCDEF', chars: '0123456789ABCDEF' },
+    { id: 'binary', name: 'Binary · .01', chars: ' .01' },
+  ];
+  const TEXT_CELL_CAP = 30000;   // fillText calls per frame; above this, text mode is off
+
+  const text = { on: false, ramp: 'ascii', size: 10 };
 
   // slider <-> settings bindings, also used to write settings back into the UI
   const plain = function (v) { return String(v); };
@@ -79,6 +106,10 @@
   const BINDINGS = [
     { input: el.pixelSize, label: el.pixelSizeValue, path: 'pixelSize', fmt: plain },
     { input: el.threshold, label: el.thresholdValue, path: 'threshold', fmt: plain },
+    { input: el.strength, label: el.strengthValue, path: 'ditherStrength', fmt: plain },
+    { input: el.black, label: el.blackValue, path: 'adjustments.black', fmt: plain },
+    { input: el.white, label: el.whiteValue, path: 'adjustments.white', fmt: plain },
+    { input: el.gamma, label: el.gammaValue, path: 'adjustments.gamma', fmt: fixed2 },
     { input: el.brightness, label: el.brightnessValue, path: 'adjustments.brightness', fmt: fixed2 },
     { input: el.contrast, label: el.contrastValue, path: 'adjustments.contrast', fmt: fixed2 },
     { input: el.saturation, label: el.saturationValue, path: 'adjustments.saturation', fmt: fixed2 },
@@ -107,21 +138,56 @@
   function deriveGlitches() {
     return glitches.order
       .filter(function (id) { return glitches.on[id]; })
-      .map(function (id) { return { id: id, amount: glitches.amount[id] }; });
+      .map(function (id) { return { id: id, amount: glitches.amount[id], mode: glitches.mode[id] }; });
   }
 
   function readGlitchState(list) {
     D.GLITCHES.forEach(function (g) {
       glitches.on[g.id] = false;
       glitches.amount[g.id] = 50;
+      glitches.mode[g.id] = g.modes ? g.modes[0].id : undefined;
     });
     (list || []).forEach(function (item) {
-      glitches.on[item.id] = true;
-      glitches.amount[item.id] = item.amount;
+      const meta = D.GLITCHES.find(function (g) { return g.id === item.id; });
+      if (!meta) return;
+      glitches.on[meta.id] = true;
+      glitches.amount[meta.id] = item.amount;
+      if (meta.modes) {
+        const known = meta.modes.some(function (m) { return m.id === item.mode; });
+        glitches.mode[meta.id] = known ? item.mode : meta.modes[0].id;
+      }
     });
     const active = (list || []).map(function (item) { return item.id; });
-    glitches.order = active.concat(glitches.order.filter(function (id) { return active.indexOf(id) < 0; }));
-  }  function syncUI() {
+    const rest = glitches.order.filter(function (id) { return active.indexOf(id) < 0; });
+    glitches.order = active.concat(rest);
+  }
+
+  function rgbToHex(rgb) {
+    function part(v) {
+      const h = Math.max(0, Math.min(255, Math.round(v || 0))).toString(16);
+      return h.length === 1 ? '0' + h : h;
+    }
+    return '#' + part(rgb[0]) + part(rgb[1]) + part(rgb[2]);
+  }
+
+  function hexToRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+    if (!m) return [0, 0, 0];
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  function syncTextUI() {
+    el.textMode.checked = text.on;
+    el.textCharset.value = text.ramp;
+    el.textSize.value = String(text.size);
+    el.textSizeValue.textContent = String(text.size);
+    el.textCharsetRow.hidden = !text.on;
+    el.textSizeRow.hidden = !text.on;
+    el.textExportRow.hidden = !text.on;
+  }
+
+  function syncUI() {
     const s = state.settings;
     el.algorithm.value = s.algorithm;
     el.palette.value = s.palette;
@@ -133,7 +199,15 @@
     el.seed.value = s.seed;
     el.seedValue.textContent = String(s.seed);
     el.denoise.checked = !!s.adjustments.denoise;
+    el.serpentine.checked = !!s.serpentine;
+    el.toneMap.value = s.toneMap;
+    el.toneInk.value = rgbToHex(s.toneInk);
+    el.tonePaper.value = rgbToHex(s.tonePaper);
+    el.inkCustom.hidden = s.toneMap !== 'custom';
+    el.alphaMode.value = s.alphaMode;
     el.thresholdRow.hidden = s.palette !== 'bw';
+    el.canvas.classList.toggle('alpha-on', s.alphaMode !== 'matte');
+    syncTextUI();
     rebuildGlitchValues();
   }
 
@@ -170,6 +244,24 @@
     });
   }
 
+  function buildToneMapSelect() {
+    D.TONE_MAPS.forEach(function (map) {
+      const option = document.createElement('option');
+      option.value = map.id;
+      option.textContent = map.name;
+      el.toneMap.appendChild(option);
+    });
+  }
+
+  function buildTextSelect() {
+    TEXT_RAMPS.forEach(function (ramp) {
+      const option = document.createElement('option');
+      option.value = ramp.id;
+      option.textContent = ramp.name;
+      el.textCharset.appendChild(option);
+    });
+  }
+
   function buildGlitchList() {
     el.glitchList.textContent = '';
     glitches.order.forEach(function (id, index) {
@@ -190,7 +282,21 @@
       check.appendChild(name);
 
       const controls = document.createElement('div');
-      controls.className = 'glitch-row';
+      controls.className = meta.modes ? 'glitch-row has-mode' : 'glitch-row';
+      let mode = null;
+      if (meta.modes) {
+        mode = document.createElement('select');
+        mode.setAttribute('aria-label', meta.name + ' mode');
+        meta.modes.forEach(function (m) {
+          const option = document.createElement('option');
+          option.value = m.id;
+          option.textContent = m.name;
+          mode.appendChild(option);
+        });
+        mode.value = glitches.mode[id];
+        mode.disabled = !glitches.on[id];
+        controls.appendChild(mode);
+      }
       const amount = document.createElement('input');
       amount.type = 'range';
       amount.min = '0';
@@ -219,8 +325,15 @@
       toggle.addEventListener('change', function () {
         glitches.on[id] = toggle.checked;
         amount.disabled = !toggle.checked;
+        if (mode) mode.disabled = !toggle.checked;
         render(true);
       });
+      if (mode) {
+        mode.addEventListener('change', function () {
+          glitches.mode[id] = mode.value;
+          render(true);
+        });
+      }
       amount.addEventListener('input', function () {
         glitches.amount[id] = parseInt(amount.value, 10);
         schedulePreview();
@@ -237,9 +350,14 @@
       const id = glitches.order[i];
       const toggle = rows[i].querySelector('input[type="checkbox"]');
       const amount = rows[i].querySelector('input[type="range"]');
+      const mode = rows[i].querySelector('select');
       toggle.checked = !!glitches.on[id];
       amount.value = String(glitches.amount[id]);
       amount.disabled = !glitches.on[id];
+      if (mode) {
+        mode.value = glitches.mode[id];
+        mode.disabled = !glitches.on[id];
+      }
     }
   }
 
@@ -293,6 +411,54 @@
       adjustments: { contrast: 1.1 },
       glitches: [{ id: 'pixelsort', amount: 70 }, { id: 'aberration', amount: 20 }],
     } },
+    { id: 'noir', name: 'Halftone Noir', settings: {
+      algorithm: 'halftone-16', palette: 'bw', pixelSize: 1,
+      adjustments: { contrast: 1.28, gamma: 1.05, sharpen: 0.35 },
+      toneMap: 'sepia',
+    } },
+    { id: 'amber', name: 'Amber CRT', settings: {
+      algorithm: 'bayer8', palette: 'amber', pixelSize: 2,
+      adjustments: { contrast: 1.15, brightness: 1.04 },
+      glitches: [{ id: 'scanlines', amount: 30 }, { id: 'crt', amount: 45 }, { id: 'grain', amount: 18 }],
+      glow: { radius: 2, intensity: 35 },
+    } },
+    { id: 'duo', name: 'Riso Duotone', settings: {
+      algorithm: 'clustered-dot-8', palette: 'bw', pixelSize: 3,
+      adjustments: { contrast: 1.2 },
+      toneMap: 'custom', toneInk: [26, 34, 120], tonePaper: [255, 214, 120],
+    } },
+    { id: 'thermal', name: 'Thermal Cam', settings: {
+      algorithm: 'bayer16', palette: 'gray-16', pixelSize: 2,
+      adjustments: { contrast: 1.35, saturation: 1.4 },
+      toneMap: 'thermal',
+    } },
+    { id: 'mix', name: 'Mixing Poster', settings: {
+      algorithm: 'yliluoma-polished', palette: 'gray-16', pixelSize: 2,
+      adjustments: { contrast: 1.15, gamma: 1.05 },
+    } },
+    { id: 'mixduo', name: 'Mixing Duotone', settings: {
+      algorithm: 'yliluoma-2', palette: 'gameboy-pocket', pixelSize: 2,
+      adjustments: { contrast: 1.2 },
+      toneMap: 'gold',
+    } },
+    { id: 'inkline', name: 'Ink Linework', settings: {
+      algorithm: 'line-h4', palette: 'blueprint', pixelSize: 1,
+      adjustments: { contrast: 1.3, sharpen: 0.6, gamma: 1.1 },
+    } },
+    { id: 'storm', name: 'Artifact Storm', settings: {
+      algorithm: 'random-noise', palette: 'virtualboy', pixelSize: 2,
+      adjustments: { contrast: 1.2 },
+      glitches: [
+        { id: 'wave', amount: 45 }, { id: 'drip', amount: 40 }, { id: 'deadpixels', amount: 30 },
+        { id: 'blocks', amount: 55 }, { id: 'pixelsort', amount: 60, mode: 'cols' },
+      ],
+    } },
+    { id: 'void', name: 'Void Bloom', settings: {
+      algorithm: 'void-cluster', palette: 'gray-8', pixelSize: 1,
+      adjustments: { contrast: 1.1 },
+      toneMap: 'cyanotype',
+      glow: { radius: 3, intensity: 45 },
+    } },
   ];
 
   function buildPresetSelect() {
@@ -337,19 +503,121 @@
     state.settings.glitches = deriveGlitches();
     const res = D.process(source, state.settings);
 
-    if (full) {
-      state.result = res;
-      ctx.putImageData(toImageData(res), 0, 0);
-    } else {
-      buffer.width = res.width;
-      buffer.height = res.height;
-      const bctx = buffer.getContext('2d');
-      bctx.putImageData(toImageData(res), 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
-      ctx.drawImage(buffer, 0, 0, el.canvas.width, el.canvas.height);
+    if (full) state.result = res;
+    el.canvas.classList.toggle('alpha-on', state.settings.alphaMode !== 'matte');
+
+    if (!(text.on && drawTextResult(res))) {
+      if (full) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.putImageData(toImageData(res), 0, 0);
+      } else {
+        buffer.width = res.width;
+        buffer.height = res.height;
+        const bctx = buffer.getContext('2d');
+        bctx.putImageData(toImageData(res), 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, el.canvas.width, el.canvas.height);
+        ctx.drawImage(buffer, 0, 0, el.canvas.width, el.canvas.height);
+      }
     }
     updateStats(res, full);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* text mode                                                          */
+  /* ------------------------------------------------------------------ */
+
+  function rampFor(id) {
+    const found = TEXT_RAMPS.find(function (r) { return r.id === id; });
+    return (found || TEXT_RAMPS[0]).chars;
+  }
+
+  function textCellSize(res) {
+    const scale = res.width / Math.max(1, state.source.width);
+    return Math.max(3, Math.round(text.size * scale));
+  }
+
+  // The character grid: one character per cell, picked by the mean luminance of
+  // the *dithered* cell, so the dither texture still shows through in which
+  // character is chosen.
+  function textGrid(res) {
+    const cell = textCellSize(res);
+    const cols = Math.max(1, Math.ceil(res.width / cell));
+    const rows = Math.max(1, Math.ceil(res.height / cell));
+    const chars = rampFor(text.ramp);
+    const lumas = new Float32Array(cols * rows);
+    let min = Infinity, max = -Infinity;
+    for (let cy = 0; cy < rows; cy++) {
+      const y0 = cy * cell, y1 = Math.min(res.height, y0 + cell);
+      for (let cx = 0; cx < cols; cx++) {
+        const x0 = cx * cell, x1 = Math.min(res.width, x0 + cell);
+        let sum = 0, count = 0;
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            const i = (y * res.width + x) * 4;
+            sum += 0.2126 * res.data[i] + 0.7152 * res.data[i + 1] + 0.0722 * res.data[i + 2];
+            count++;
+          }
+        }
+        const luma = count ? sum / count : 0;
+        lumas[cy * cols + cx] = luma;
+        if (luma < min) min = luma;
+        if (luma > max) max = luma;
+      }
+    }
+    // Stretch the ramp over the proof's own luminance range: a dark proof (a
+    // night scene, or any dark palette) would otherwise print as a field of
+    // blanks and commas. The tone controls remain the way to change contrast.
+    const span = max - min;
+    const lines = [];
+    for (let cy = 0; cy < rows; cy++) {
+      let line = '';
+      for (let cx = 0; cx < cols; cx++) {
+        const t = span > 1 ? (lumas[cy * cols + cx] - min) / span : 0.5;
+        line += chars[Math.min(chars.length - 1, Math.max(0, Math.round(t * (chars.length - 1))))];
+      }
+      lines.push(line);
+    }
+    return { cell: cell, cols: cols, rows: rows, lines: lines };
+  }
+
+  // The ink and paper for the type: the tone map's own colours when one is on,
+  // otherwise the console's.
+  function inkColors() {
+    const map = D.TONE_MAPS.find(function (m) { return m.id === state.settings.toneMap; });
+    if (map && map.id !== 'none') {
+      const custom = map.id === 'custom';
+      return {
+        ink: rgbToHex(custom ? state.settings.toneInk : map.ink),
+        paper: rgbToHex(custom ? state.settings.tonePaper : map.paper),
+      };
+    }
+    return { ink: '#e8eaf0', paper: '#0b0c10' };
+  }
+
+  function drawTextResult(res) {
+    const grid = textGrid(res);
+    if (grid.cols * grid.rows > TEXT_CELL_CAP) return false;
+    const ink = inkColors();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (state.settings.alphaMode === 'matte') {
+      ctx.fillStyle = ink.paper;
+      ctx.fillRect(0, 0, res.width, res.height);
+    } else {
+      ctx.clearRect(0, 0, res.width, res.height);
+    }
+    ctx.font = grid.cell + 'px ' + MONO_STACK;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = ink.ink;
+    const glyph = ctx.measureText('M').width || grid.cell * 0.6;
+    const dx = (grid.cell - glyph) / 2;
+    for (let cy = 0; cy < grid.rows; cy++) {
+      const line = grid.lines[cy];
+      for (let cx = 0; cx < grid.cols; cx++) {
+        ctx.fillText(line[cx], cx * grid.cell + dx, cy * grid.cell);
+      }
+    }
+    return true;
   }
 
   function schedulePreview() {
@@ -633,6 +901,11 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
+  function exportName(extension) {
+    const base = (state.name || 'dither').replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9._-]+/gi, '-');
+    return base + '-dither' + extension;
+  }
+
   function exportPNG() {
     if (!state.source) return;
     render(true);
@@ -642,7 +915,10 @@
     out.height = el.canvas.height * scale;
     const octx = out.getContext('2d');
     octx.imageSmoothingEnabled = false;
-    if (scale === 1) {
+    if (text.on) {
+      // What you see is what you get: the character proof, scaled up as type.
+      octx.drawImage(el.canvas, 0, 0, out.width, out.height);
+    } else if (scale === 1) {
       octx.putImageData(toImageData(state.result), 0, 0);
     } else {
       buffer.width = state.result.width;
@@ -650,11 +926,75 @@
       buffer.getContext('2d').putImageData(toImageData(state.result), 0, 0);
       octx.drawImage(buffer, 0, 0, out.width, out.height);
     }
-    const base = (state.name || 'dither').replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9._-]+/gi, '-');
     out.toBlob(function (blob) {
-      if (blob) download(blob, base + '-dither-' + scale + 'x.png');
+      if (blob) download(blob, exportName('-' + scale + 'x.png'));
+      else el.statStatus.textContent = 'The browser refused to build that PNG';
       el.statStatus.textContent = 'Exported PNG ' + scale + '×';
     }, 'image/png');
+  }
+
+  function exportTXT() {
+    if (!state.source) return;
+    render(true);
+    const grid = textGrid(state.result);
+    const body = grid.lines.join('\n') + '\n';
+    download(new Blob([body], { type: 'text/plain' }), exportName('.txt'));
+    el.statStatus.textContent = 'Exported ' + grid.cols + '×' + grid.rows + ' characters';
+  }
+
+  function copyPNG() {
+    if (!state.source) return;
+    render(true);
+    el.canvas.toBlob(function (blob) {
+      if (!blob) return;
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        el.statStatus.textContent = 'This browser cannot copy images';
+        return;
+      }
+      navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]).then(function () {
+        el.statStatus.textContent = 'PNG copied to the clipboard';
+      }).catch(function () {
+        el.statStatus.textContent = 'The browser blocked the clipboard write';
+      });
+    }, 'image/png');
+  }
+
+  // A one-button surprise: a complete recipe, tones and glitches included.
+  const RANDOM_TONES = ['none', 'none', 'sepia', 'blueprint', 'amber', 'cyanotype', 'forest', 'rose', 'thermal', 'gold'];
+
+  function randomize() {
+    const algo = D.ALGORITHMS[(Math.random() * D.ALGORITHMS.length) | 0];
+    const palette = D.PALETTES[(Math.random() * D.PALETTES.length) | 0];
+    const next = {
+      algorithm: algo.id,
+      palette: palette.id,
+      pixelSize: 1 + ((Math.random() * 4) | 0),
+      ditherStrength: 80 + ((Math.random() * 60) | 0),
+      serpentine: Math.random() < 0.4,
+      toneMap: RANDOM_TONES[(Math.random() * RANDOM_TONES.length) | 0],
+      seed: (Math.random() * 0xffffffff) >>> 0,
+      adjustments: {
+        contrast: 1 + Math.random() * 0.3,
+        saturation: 0.85 + Math.random() * 0.6,
+        gamma: 0.9 + Math.random() * 0.25,
+      },
+      glitches: [],
+      glow: { radius: 0, intensity: 0 },
+    };
+    const pool = D.GLITCHES.slice();
+    const count = (Math.random() * 3) | 0;
+    for (let i = 0; i < count && pool.length; i++) {
+      const pick = pool.splice((Math.random() * pool.length) | 0, 1)[0];
+      next.glitches.push({
+        id: pick.id,
+        amount: 20 + ((Math.random() * 55) | 0),
+        mode: pick.modes ? pick.modes[(Math.random() * pick.modes.length) | 0].id : undefined,
+      });
+    }
+    if (Math.random() < 0.3) {
+      next.glow = { radius: 1 + ((Math.random() * 3) | 0), intensity: 20 + ((Math.random() * 40) | 0) };
+    }
+    applySettings(next, 'Random: ' + algo.name + ' · ' + palette.name);
   }
 
   /* ------------------------------------------------------------------ */
@@ -664,6 +1004,8 @@
   function init() {
     buildAlgorithmSelect();
     buildPaletteSelect();
+    buildToneMapSelect();
+    buildTextSelect();
     buildGlitchList();
     buildPresetSelect();
 
@@ -708,6 +1050,58 @@
       state.settings.adjustments.denoise = el.denoise.checked;
       render(true);
     });
+
+    el.serpentine.addEventListener('change', function () {
+      state.settings.serpentine = el.serpentine.checked;
+      render(true);
+    });
+
+    el.toneMap.addEventListener('change', function () {
+      state.settings.toneMap = el.toneMap.value;
+      el.inkCustom.hidden = state.settings.toneMap !== 'custom';
+      render(true);
+    });
+
+    [el.toneInk, el.tonePaper].forEach(function (input) {
+      input.addEventListener('input', function () {
+        state.settings.toneInk = hexToRgb(el.toneInk.value);
+        state.settings.tonePaper = hexToRgb(el.tonePaper.value);
+        schedulePreview();
+      });
+      input.addEventListener('change', function () {
+        state.settings.toneInk = hexToRgb(el.toneInk.value);
+        state.settings.tonePaper = hexToRgb(el.tonePaper.value);
+        render(true);
+      });
+    });
+
+    el.alphaMode.addEventListener('change', function () {
+      state.settings.alphaMode = el.alphaMode.value;
+      el.canvas.classList.toggle('alpha-on', state.settings.alphaMode !== 'matte');
+      render(true);
+    });
+
+    el.textMode.addEventListener('change', function () {
+      text.on = el.textMode.checked;
+      syncTextUI();
+      render(true);
+    });
+    el.textCharset.addEventListener('change', function () {
+      text.ramp = el.textCharset.value;
+      render(true);
+    });
+    el.textSize.addEventListener('input', function () {
+      text.size = parseInt(el.textSize.value, 10) || 10;
+      el.textSizeValue.textContent = String(text.size);
+      schedulePreview();
+    });
+    el.textSize.addEventListener('change', function () {
+      text.size = parseInt(el.textSize.value, 10) || 10;
+      render(true);
+    });
+    el.exportTxt.addEventListener('click', exportTXT);
+    el.copy.addEventListener('click', copyPNG);
+    el.random.addEventListener('click', randomize);
 
     el.demo.addEventListener('click', loadDemo);
     el.open.addEventListener('click', function () { el.file.click(); });
@@ -808,6 +1202,7 @@
       const tag = (document.activeElement && document.activeElement.tagName) || '';
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'c' || e.key === 'C') setCompare(true);
+      else if (e.key === 'r' || e.key === 'R') randomize();
       else if (e.key === '+' || e.key === '=') zoomStep(1);
       else if (e.key === '-' || e.key === '_') zoomStep(-1);
       else if (e.key === '0') { state.zoom = null; applyZoom(); }
@@ -835,14 +1230,55 @@
         algorithm: state.settings.algorithm,
         palette: state.settings.palette,
         pixelSize: state.settings.pixelSize,
+        ditherStrength: state.settings.ditherStrength,
+        serpentine: state.settings.serpentine,
+        toneMap: state.settings.toneMap,
+        alphaMode: state.settings.alphaMode,
+        textMode: text.on,
         colors: state.result ? state.result.colors : null,
         ms: state.result ? Math.round(state.result.ms) : null,
         zoom: el.statZoom.textContent,
-        glitches: deriveGlitches().map(function (g) { return g.id + ':' + g.amount; }),
+        glitches: deriveGlitches().map(function (g) {
+          return g.id + ':' + g.amount + (g.mode ? ':' + g.mode : '');
+        }),
         status: el.statStatus.textContent,
       };
     },
     applyPreset: function (id) { applyPreset(id); },
+    randomize: randomize,
+    exportTxt: exportTXT,
+    // Test hook: load a synthetic source (a data URL) without a file dialog.
+    loadDataURL: function (url, name) {
+      const img = new Image();
+      img.onload = function () { loadBitmap(img, name || 'test image'); };
+      img.onerror = function () { el.statStatus.textContent = 'That test image did not load'; };
+      img.src = url;
+    },
+    deriveGlitches: deriveGlitches,
+    setText: function (on, ramp, size) {
+      text.on = !!on;
+      if (ramp) text.ramp = ramp;
+      if (size) text.size = size;
+      syncTextUI();
+      render(true);
+    },
+    textGrid: function () {
+      if (!state.result) return null;
+      const grid = textGrid(state.result);
+      return { cols: grid.cols, rows: grid.rows, cell: grid.cell, lines: grid.lines };
+    },
+    // Drawn alpha values, for checking a dithered or kept matte.
+    alphaStats: function () {
+      const data = ctx.getImageData(0, 0, el.canvas.width, el.canvas.height).data;
+      let min = 255, max = 0;
+      const levels = new Set();
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] < min) min = data[i];
+        if (data[i] > max) max = data[i];
+        if (levels.size < 64) levels.add(data[i]);
+      }
+      return { min: min, max: max, count: levels.size, levels: Array.from(levels).sort(function (a, b) { return a - b; }) };
+    },
     setSetting: function (path, value) {
       setPath(state.settings, path, value);
       syncUI();

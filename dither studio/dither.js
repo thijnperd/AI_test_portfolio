@@ -68,6 +68,62 @@
     return v < 0 ? 0 : v > 255 ? 255 : v;
   }
 
+  // sRGB → linear-light lookup, for blends that should add light rather than
+  // numbers (the glow). 256 entries, built once.
+  const SRGB_TO_LINEAR = (function () {
+    const t = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const c = i / 255;
+      t[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    return t;
+  })();
+
+  function linearToSrgb255(v) {
+    const c = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+    return clamp255(Math.round(c * 255));
+  }
+
+  /* --- procedural masks ----------------------------------------------- */
+
+  // Stable hash of a pixel coordinate and the user seed, in 0..1.
+  function hash01(x, y, seed) {
+    return hash32(Math.imul(x + 0x9e37, 0x85ebca6b) ^ Math.imul(y + 0x27d4, 0xc2b2ae35) ^ (seed >>> 0)) / 4294967296;
+  }
+
+  // Tileable value noise: smooth blobs instead of isolated speckles.
+  function valueNoise(x, y, seed, cell) {
+    const gx = x / cell, gy = y / cell;
+    const x0 = Math.floor(gx), y0 = Math.floor(gy);
+    const fx = gx - x0, fy = gy - y0;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hash01(x0, y0, seed), b = hash01(x0 + 1, y0, seed);
+    const c = hash01(x0, y0 + 1, seed), d = hash01(x0 + 1, y0 + 1, seed);
+    const top = a + (b - a) * sx, bot = c + (d - c) * sx;
+    return (top + (bot - top) * sy) * 255;
+  }
+
+  // Interleaved gradient noise (Jimenez 2013) — cheap film-grain masks.
+  function ignValue(x, y) {
+    const v = 0.06711056 * x + 0.00583715 * y;
+    const f = v - Math.floor(v);
+    const g = 52.9829189 * f;
+    return (g - Math.floor(g)) * 255;
+  }
+
+  // R2 low-discrepancy sequence (Roberts 2018) — even coverage, no tiling.
+  function r2Value(x, y) {
+    const v = 0.7548776662466927 * x + 0.5698402909980532 * y;
+    return (v - Math.floor(v)) * 255;
+  }
+
+  // Two diagonal ramps read together as crosshatch shading.
+  function crosshatchValue(x, y) {
+    const a = ((x + y) % 8) * 32;
+    const b = ((x - y + 8000) % 8) * 32;
+    return (a + b) * 0.5;
+  }
+
   /* ------------------------------------------------------------------ */
   /* ordered-dither matrices                                            */
   /* ------------------------------------------------------------------ */
@@ -200,19 +256,24 @@
     return voidClusterCache;
   }
 
-  const BLUE_NOISE_SIZE = 16;
+  // Two masks: the 16×16 builds in a few milliseconds and is used by default;
+  // the 64×64 is the real article (no visible tiling) and is generated lazily
+  // once, on first use, because it takes a few hundred milliseconds.
   const BLUE_NOISE_SEED = 0x51e2d7;
-  let blueNoiseCache = null;
-  function blueNoiseRanks() {
-    if (!blueNoiseCache) blueNoiseCache = voidAndCluster(BLUE_NOISE_SIZE, BLUE_NOISE_SEED);
-    return blueNoiseCache;
+  const BLUE_NOISE_CACHE = new Map();
+  function blueNoiseRanks(size) {
+    const s = size || 16;
+    if (!BLUE_NOISE_CACHE.has(s)) {
+      BLUE_NOISE_CACHE.set(s, voidAndCluster(s, BLUE_NOISE_SEED ^ (s * 0x9e3779b1)));
+    }
+    return BLUE_NOISE_CACHE.get(s);
   }
 
-  // A tiled blue-noise threshold value: the 16×16 mask, rotated and offset
-  // per tile from the user seed so the tiling is not obvious.
-  function blueNoiseValue(x, y, seed) {
-    const mask = blueNoiseRanks();
-    const s = BLUE_NOISE_SIZE;
+  // A tiled blue-noise threshold value: the mask, rotated and offset per tile
+  // from the user seed so the tiling is not obvious.
+  function blueNoiseValue(x, y, seed, size) {
+    const s = Math.max(8, Math.min(64, Math.round(size || 16)));
+    const mask = blueNoiseRanks(s);
     const tx = (x / s) | 0, ty = (y / s) | 0;
     const h = hash32(Math.imul(tx + 1, 0x9e3779b1) ^ Math.imul(ty + 1, 0x85ebca6b) ^ (seed >>> 0));
     const ox = h & (s - 1);
@@ -225,6 +286,62 @@
     return mask[((ly + oy) & (s - 1)) * s + ((lx + ox) & (s - 1))] * (255 / (s * s - 1));
   }
 
+  /* --- generated screens ---------------------------------------------- */
+
+  // Order the cells of a size×size tile by a key and hand back the ranks.
+  function rankedTile(size, keyFn) {
+    const cells = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) cells.push([keyFn(x, y), y, x]);
+    }
+    cells.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]; });
+    const ranks = new Uint16Array(size * size);
+    for (let r = 0; r < cells.length; r++) ranks[cells[r][1] * size + cells[r][2]] = r;
+    return ranks;
+  }
+
+  // Clustered dot: cells fill outward from the tile centre, so dots grow as
+  // round blobs the way a real contact screen's do. The tiny angular term
+  // breaks radius ties so the first dots grow evenly in every direction.
+  function clusteredDotRanks(size) {
+    const c = (size - 1) / 2;
+    return rankedTile(size, function (x, y) {
+      const dx = x - c, dy = y - c;
+      return Math.sqrt(dx * dx + dy * dy) + (0.35 * Math.atan2(dy, dx)) / (Math.PI * 2);
+    });
+  }
+
+  // Rotated spirals: a halftone screen with its own angle at any tile size.
+  function spiralRanks(size, turns) {
+    const c = (size - 1) / 2;
+    const t = turns === undefined ? 1 : turns;
+    return rankedTile(size, function (x, y) {
+      const dx = x - c, dy = y - c;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const a = Math.atan2(dy, dx) / (Math.PI * 2) + 0.5;
+      return r + a * t;
+    });
+  }
+
+  // Line screens: whole lines thicken in step, so the screen reads as ruled
+  // paper rather than dots.
+  function lineRanks(size, vertical) {
+    return rankedTile(size, function (x, y) {
+      const along = vertical ? y : x;
+      const across = vertical ? x : y;
+      return (across % size) * size + along;
+    });
+  }
+
+  function diagonalRanks(size) {
+    return rankedTile(size, function (x, y) { return ((x + y) % size) * size + x; });
+  }
+
+  // Checkerboard: two ranks only, the coarsest screen there is.
+  function checksRanks(size) {
+    return rankedTile(size, function (x, y) { return ((x + y) & 1) * size * size + (y * size + x); });
+  }
+
   const MATRIX_CACHE = new Map();
   function matrixFor(id) {
     if (MATRIX_CACHE.has(id)) return MATRIX_CACHE.get(id);
@@ -232,8 +349,20 @@
     if (id === 'bayer2') mat = normalizeRanks(bayerRanks(2));
     else if (id === 'bayer4') mat = normalizeRanks(bayerRanks(4));
     else if (id === 'bayer8') mat = normalizeRanks(bayerRanks(8));
+    else if (id === 'bayer16') mat = normalizeRanks(bayerRanks(16));
     else if (id === 'clustered-dot') mat = normalizeRanks(CLUSTER_DOT_RANKS);
+    else if (id === 'clustered-dot-8') mat = normalizeRanks(clusteredDotRanks(8));
     else if (id === 'halftone') mat = normalizeRanks(HALFTONE_RANKS);
+    else if (id === 'halftone-8') mat = normalizeRanks(spiralRanks(8, 1));
+    else if (id === 'halftone-16') mat = normalizeRanks(spiralRanks(16, 2.5));
+    else if (id === 'spiral8') mat = normalizeRanks(spiralRanks(8, 4));
+    else if (id === 'line-h2') mat = normalizeRanks(lineRanks(2, false));
+    else if (id === 'line-v2') mat = normalizeRanks(lineRanks(2, true));
+    else if (id === 'line-h4') mat = normalizeRanks(lineRanks(4, false));
+    else if (id === 'line-v4') mat = normalizeRanks(lineRanks(4, true));
+    else if (id === 'diagonal4') mat = normalizeRanks(diagonalRanks(4));
+    else if (id === 'diagonal8') mat = normalizeRanks(diagonalRanks(8));
+    else if (id === 'checks') mat = normalizeRanks(checksRanks(4));
     else if (id === 'void-cluster') mat = normalizeRanks(voidCluster8());
     else mat = normalizeRanks(bayerRanks(4));
     MATRIX_CACHE.set(id, mat);
@@ -277,6 +406,34 @@
       [40, 40, 40], [60, 56, 54], [80, 73, 69], [102, 92, 84], [189, 174, 147], [213, 196, 161], [235, 219, 178], [251, 241, 199],
       [204, 36, 29], [177, 98, 134], [152, 151, 26], [215, 153, 33], [69, 133, 136], [104, 157, 106], [214, 93, 14], [184, 187, 38],
     ] },
+    { id: 'apple2', name: 'Apple II (6)', colors: [
+      [0, 0, 0], [255, 255, 255], [20, 245, 60], [255, 68, 253], [255, 106, 60], [20, 207, 253],
+    ] },
+    { id: 'msx', name: 'MSX (TMS9918)', colors: [
+      [0, 0, 0], [33, 200, 66], [94, 220, 120], [84, 85, 237], [125, 118, 252], [212, 82, 77], [66, 235, 245], [252, 85, 84],
+      [255, 121, 120], [212, 193, 84], [230, 206, 128], [33, 176, 59], [201, 91, 186], [204, 204, 204], [255, 255, 255],
+    ] },
+    { id: 'ega', name: 'EGA / VGA 16', colors: [
+      [0, 0, 0], [0, 0, 170], [0, 170, 0], [0, 170, 170], [170, 0, 0], [170, 0, 170], [170, 85, 0], [170, 170, 170],
+      [85, 85, 85], [85, 85, 255], [85, 255, 85], [85, 255, 255], [255, 85, 85], [255, 85, 255], [255, 255, 85], [255, 255, 255],
+    ] },
+    { id: 'virtualboy', name: 'Virtual Boy (4 red)', colors: [[0, 0, 0], [85, 0, 0], [170, 0, 0], [255, 0, 0]] },
+    { id: 'gray-4', name: 'Grayscale 4 (2-bit)', colors: [[0, 0, 0], [85, 85, 85], [170, 170, 170], [255, 255, 255]] },
+    { id: 'gray-8', name: 'Grayscale 8 (3-bit)', colors: [
+      [0, 0, 0], [36, 36, 36], [73, 73, 73], [109, 109, 109], [146, 146, 146], [182, 182, 182], [219, 219, 219], [255, 255, 255],
+    ] },
+    { id: 'gray-16', name: 'Grayscale 16 (4-bit)', colors: (function () {
+      const out = [];
+      for (let i = 0; i < 16; i++) {
+        const v = Math.round((i * 255) / 15);
+        out.push([v, v, v]);
+      }
+      return out;
+    })() },
+    { id: 'amber', name: 'Amber CRT ink', colors: [[26, 12, 0], [255, 176, 0]] },
+    { id: 'sepia', name: 'Sepia ink', colors: [[43, 32, 24], [245, 222, 179]] },
+    { id: 'cyan-ink', name: 'Cyan ink', colors: [[2, 26, 45], [120, 230, 255]] },
+    { id: 'blueprint', name: 'Blueprint ink', colors: [[8, 24, 64], [214, 236, 255]] },
   ];
 
   const PALETTE_BY_ID = new Map(PALETTES.map(function (p) { return [p.id, p]; }));
@@ -324,6 +481,19 @@
     const contrast = adj.contrast === undefined ? 1 : adj.contrast;
     const saturation = adj.saturation === undefined ? 1 : adj.saturation;
     const hue = adj.hue || 0;
+    const black = adj.black === undefined ? 0 : adj.black;
+    const white = adj.white === undefined ? 255 : adj.white;
+    const gamma = adj.gamma === undefined ? 1 : adj.gamma;
+    // Input levels first, then gamma: both are input-side, so a render with the
+    // defaults is untouched by them.
+    if (black > 0 || white < 255) {
+      const span = Math.max(1, white - black);
+      for (let i = 0; i < n; i++) f[i] = ((f[i] - black) / span) * 255;
+    }
+    if (gamma !== 1) {
+      const inv = 1 / gamma;
+      for (let i = 0; i < n; i++) f[i] = 255 * Math.pow(clamp255(f[i]) / 255, inv);
+    }
     if (brightness !== 1) {
       for (let i = 0; i < n; i++) f[i] *= brightness;
     }
@@ -363,8 +533,44 @@
       const k = adj.sharpen;
       for (let i = 0; i < n; i++) f[i] += k * (f[i] - blurred[i]);
     }
-    if (adj.denoise) median3RGB(f, w, h);
-    for (let i = 0; i < n; i++) f[i] = clamp255(f[i]);
+    if (adj.denoise) median3RGB(f, w, h);      for (let i = 0; i < n; i++) f[i] = clamp255(f[i]);
+    return f;
+  }
+
+  /* --- tone maps (duotone grades) ------------------------------------- */
+
+  // A tone map sends black to one ink and white to the other, so it survives
+  // dithering: a 1-bit dither stays two inks, a palette gets tinted.
+  const TONE_MAPS = [
+    { id: 'none', name: 'None' },
+    { id: 'gray', name: 'Grayscale', ink: [0, 0, 0], paper: [255, 255, 255] },
+    { id: 'sepia', name: 'Sepia', ink: [43, 32, 24], paper: [245, 222, 179] },
+    { id: 'blueprint', name: 'Blueprint', ink: [8, 24, 64], paper: [214, 236, 255] },
+    { id: 'cyanotype', name: 'Cyanotype', ink: [3, 32, 52], paper: [163, 224, 236] },
+    { id: 'amber', name: 'Amber CRT', ink: [26, 12, 0], paper: [255, 176, 0] },
+    { id: 'rose', name: 'Rose', ink: [40, 4, 20], paper: [255, 214, 224] },
+    { id: 'forest', name: 'Forest', ink: [10, 28, 14], paper: [214, 240, 200] },
+    { id: 'thermal', name: 'Thermal', ink: [12, 0, 40], paper: [255, 240, 120] },
+    { id: 'gold', name: 'Gold leaf', ink: [36, 22, 0], paper: [255, 226, 140] },
+    { id: 'custom', name: 'Custom (ink → paper)' },
+  ];
+  const TONE_MAP_BY_ID = new Map(TONE_MAPS.map(function (m) { return [m.id, m]; }));
+
+  // Interleaved Float32 RGB in 0..255, mapped in place by luma.
+  function applyToneMap(f, w, h, settings) {
+    const map = TONE_MAP_BY_ID.get(settings.toneMap);
+    if (!map || map.id === 'none') return f;
+    const ink = map.id === 'custom' ? settings.toneInk : map.ink;
+    const paper = map.id === 'custom' ? settings.tonePaper : map.paper;
+    const dr = paper[0] - ink[0], dg = paper[1] - ink[1], db = paper[2] - ink[2];
+    const n = w * h;
+    for (let i = 0; i < n; i++) {
+      const p = i * 3;
+      const t = clamp255(luma(f[p], f[p + 1], f[p + 2])) / 255;
+      f[p] = ink[0] + dr * t;
+      f[p + 1] = ink[1] + dg * t;
+      f[p + 2] = ink[2] + db * t;
+    }
     return f;
   }
 
@@ -492,7 +698,7 @@
         out[di] = src[si];
         out[di + 1] = src[si + 1];
         out[di + 2] = src[si + 2];
-        out[di + 3] = 255;
+        out[di + 3] = src[si + 3];
       }
     }
     return out;
@@ -507,19 +713,42 @@
     { id: 'bayer2', name: 'Bayer 2×2', group: 'Ordered', kind: 'ordered' },
     { id: 'bayer4', name: 'Bayer 4×4', group: 'Ordered', kind: 'ordered' },
     { id: 'bayer8', name: 'Bayer 8×8', group: 'Ordered', kind: 'ordered' },
+    { id: 'bayer16', name: 'Bayer 16×16', group: 'Ordered', kind: 'ordered' },
     { id: 'clustered-dot', name: 'Clustered-Dot 4×4', group: 'Ordered', kind: 'ordered' },
+    { id: 'clustered-dot-8', name: 'Clustered-Dot 8×8', group: 'Ordered', kind: 'ordered' },
     { id: 'halftone', name: 'Halftone 4×4', group: 'Ordered', kind: 'ordered' },
+    { id: 'halftone-8', name: 'Halftone 8×8 (round)', group: 'Ordered', kind: 'ordered' },
+    { id: 'halftone-16', name: 'Halftone 16×16 (fine)', group: 'Ordered', kind: 'ordered' },
+    { id: 'spiral8', name: 'Spiral 8×8', group: 'Ordered', kind: 'ordered' },
+    { id: 'line-h2', name: 'Line 2×2 (horizontal)', group: 'Ordered', kind: 'ordered' },
+    { id: 'line-v2', name: 'Line 2×2 (vertical)', group: 'Ordered', kind: 'ordered' },
+    { id: 'line-h4', name: 'Line 4×4 (horizontal)', group: 'Ordered', kind: 'ordered' },
+    { id: 'line-v4', name: 'Line 4×4 (vertical)', group: 'Ordered', kind: 'ordered' },
+    { id: 'diagonal4', name: 'Diagonal 4×4', group: 'Ordered', kind: 'ordered' },
+    { id: 'diagonal8', name: 'Diagonal 8×8', group: 'Ordered', kind: 'ordered' },
+    { id: 'checks', name: 'Checkerboard', group: 'Ordered', kind: 'ordered' },
     { id: 'void-cluster', name: 'Void-and-Cluster 8×8', group: 'Ordered', kind: 'ordered' },
     { id: 'random-noise', name: 'Random Noise', group: 'Stochastic', kind: 'noise' },
-    { id: 'blue-noise-mask', name: 'Blue-Noise Mask', group: 'Stochastic', kind: 'bluenoise' },
+    { id: 'blue-noise-mask', name: 'Blue-Noise Mask 16', group: 'Stochastic', kind: 'bluenoise', size: 16 },
+    { id: 'blue-noise-32', name: 'Blue-Noise Mask 32 (large)', group: 'Stochastic', kind: 'bluenoise', size: 32 },
+    { id: 'clustered-noise', name: 'Clustered Noise', group: 'Stochastic', kind: 'clustered-noise', cell: 4 },
+    { id: 'ign', name: 'Interleaved Gradient Noise', group: 'Stochastic', kind: 'formula', formula: 'ign' },
+    { id: 'r2', name: 'R2 Low-Discrepancy', group: 'Stochastic', kind: 'formula', formula: 'r2' },
+    { id: 'crosshatch', name: 'Crosshatch', group: 'Stochastic', kind: 'formula', formula: 'crosshatch' },
+    { id: 'yliluoma-2', name: 'Yliluoma mix: 2 colours', group: 'Mixing', kind: 'yliluoma', option: 2 },
+    { id: 'yliluoma-greedy', name: 'Yliluoma mix: quick', group: 'Mixing', kind: 'yliluoma', option: 3 },
+    { id: 'yliluoma-polished', name: 'Yliluoma mix: deep', group: 'Mixing', kind: 'yliluoma', option: 4 },
     { id: 'floyd-steinberg', name: 'Floyd–Steinberg', group: 'Error diffusion', kind: 'diffusion', kernel: 'floyd-steinberg' },
     { id: 'atkinson', name: 'Atkinson', group: 'Error diffusion', kind: 'diffusion', kernel: 'atkinson' },
     { id: 'sierra', name: 'Sierra', group: 'Error diffusion', kind: 'diffusion', kernel: 'sierra' },
+    { id: 'sierra-two-row', name: 'Sierra (two-row)', group: 'Error diffusion', kind: 'diffusion', kernel: 'sierra-two-row' },
     { id: 'sierra-lite', name: 'Sierra-Lite', group: 'Error diffusion', kind: 'diffusion', kernel: 'sierra-lite' },
     { id: 'jjn', name: 'Jarvis–Judice–Ninke', group: 'Error diffusion', kind: 'diffusion', kernel: 'jjn' },
     { id: 'stucki', name: 'Stucki', group: 'Error diffusion', kind: 'diffusion', kernel: 'stucki' },
     { id: 'burkes', name: 'Burkes', group: 'Error diffusion', kind: 'diffusion', kernel: 'burkes' },
     { id: 'nakano', name: 'Nakano', group: 'Error diffusion', kind: 'diffusion', kernel: 'nakano' },
+    { id: 'fan', name: 'Fan', group: 'Error diffusion', kind: 'diffusion', kernel: 'fan' },
+    { id: 'shiau-fan', name: 'Shiau–Fan', group: 'Error diffusion', kind: 'diffusion', kernel: 'shiau-fan' },
     { id: 'stevenson-arce', name: 'Stevenson–Arce', group: 'Error diffusion', kind: 'diffusion', kernel: 'stevenson-arce' },
     { id: 'riemersma', name: 'Riemersma', group: 'Error diffusion', kind: 'diffusion', kernel: 'riemersma' },
     { id: 'ostromoukhov', name: 'Ostromoukhov', group: 'Error diffusion', kind: 'diffusion', kernel: 'ostromoukhov' },
@@ -537,6 +766,9 @@
     'stucki': { div: 42, weights: [[0, 1, 8], [0, 2, 4], [1, -2, 2], [1, -1, 4], [1, 0, 8], [1, 1, 4], [1, 2, 2], [2, -2, 1], [2, -1, 2], [2, 0, 4], [2, 1, 2], [2, 2, 1]] },
     'burkes': { div: 32, weights: [[0, 1, 8], [0, 2, 4], [1, -2, 2], [1, -1, 4], [1, 0, 8], [1, 1, 4], [1, 2, 2]] },
     'nakano': { div: 24, weights: [[0, 1, 8], [1, -1, 4], [1, 0, 4], [1, 1, 4], [2, -2, 1], [2, -1, 2], [2, 0, 1]] },
+    'fan': { div: 16, weights: [[0, 1, 7], [1, -2, 1], [1, -1, 3], [1, 0, 5]] },
+    'shiau-fan': { div: 18, weights: [[0, 1, 7], [1, -2, 1], [1, -1, 3], [1, 0, 5], [2, -1, 1], [2, 0, 1]] },
+    'sierra-two-row': { div: 16, weights: [[0, 1, 4], [0, 2, 3], [1, -2, 1], [1, -1, 2], [1, 0, 3], [1, 1, 2], [1, 2, 1]] },
     'stevenson-arce': { div: 200, weights: [[0, 2, 32], [1, -3, 12], [1, -1, 26], [1, 1, 30], [1, 3, 16], [2, -2, 12], [2, 0, 26], [2, 2, 12], [3, -3, 5], [3, -1, 12], [3, 1, 12], [3, 3, 5]] },
   };
 
@@ -553,42 +785,293 @@
     7, 0, 4, 11, 21, 0, 10, 31, 13, 0, 5, 18, 13, 0, 5, 18,
   ]);
 
+  /* --- masks ---------------------------------------------------------- */
+
+  // The threshold mask for one pixel, 0..255. Ordered screens read their tile,
+  // stochastic screens roll their own: white noise from the seeded RNG (the
+  // order of calls is the pixel order, so it stays reproducible), blue noise
+  // from the tiled void-and-cluster mask, clustered noise from a value-noise
+  // field, formulas from their closed form.
+  function maskValue(algo, x, y, settings, rng, mat, m) {
+    switch (algo.kind) {
+      case 'ordered': return mat[(y % m) * m + (x % m)];
+      case 'noise': return rng() * 255;
+      case 'bluenoise': return blueNoiseValue(x, y, settings.seed, algo.size || 16);
+      case 'clustered-noise': return valueNoise(x, y, settings.seed, algo.cell || 4);
+      case 'formula':
+        if (algo.formula === 'ign') return ignValue(x, y);
+        if (algo.formula === 'r2') return r2Value(x, y);
+        return crosshatchValue(x, y);
+      default: return 128;
+    }
+  }
+
+  // `strength` scales every mask away from mid-grey: at 0 the screen is a plain
+  // threshold, at 100 it is the published screen, above that it is pushed.
+  function scaleMask(mask, k) {
+    return k === 1 ? mask : 128 + (mask - 128) * k;
+  }
+
+  function scaledCoeffs(algo, strength) {
+    const kernel = KERNELS[algo.kernel] || KERNELS['floyd-steinberg'];
+    const k = strength / 100;
+    const out = [];
+    for (let i = 0; i < kernel.weights.length; i++) {
+      const t = kernel.weights[i];
+      out.push([t[0], t[1], (t[2] / kernel.div) * k]);
+    }
+    return out;
+  }
+
+  function mirrorCoeffs(coeffs) {
+    const out = [];
+    for (let i = 0; i < coeffs.length; i++) out.push([coeffs[i][0], -coeffs[i][1], coeffs[i][2]]);
+    return out;
+  }
+
+  /* --- Yliluoma mixing ------------------------------------------------ */
+
+  // Yliluoma's ordered dithering (bisqwit, 2017). Instead of snapping to one
+  // colour per pixel, a *mixing plan* — a short sequence of palette entries —
+  // is built for each target, and the ordered-screen rank picks the entry. The
+  // plan is searched for, not derived: option 2 finds the best convex mix of
+  // two palette colours, option 3 grows the plan greedily (the plan metric is
+  // the sum of the squared distances between the target and every partial mean
+  // of the sorted plan, exactly as published), option 4 additionally prunes
+  // redundant entries from the finished plan.
+  const YLL_STEPS = 16;          // plan length; the screen resolves 16 levels
+  const YLL_MONO_LEVELS = 32;    // luma bins for the mono path
+  const YLL_RGB_LEVELS = 16;     // per-channel bins for the colour path
+  const YLL_CANDIDATES = 8;      // palette colours searched per plan step
+  const YLL_CACHE = new Map();
+  let yllScreen = null;
+
+  function yliluomaScreen() {
+    if (!yllScreen) {
+      const mat = matrixFor('bayer8');
+      yllScreen = new Float32Array(mat.length);
+      for (let i = 0; i < mat.length; i++) yllScreen[i] = mat[i] / 255;
+    }
+    return yllScreen;
+  }
+
+  function yllEntry(paletteId, option, mono) {
+    const key = paletteId + '|' + option + '|' + (mono ? 'm' : 'c');
+    let entry = YLL_CACHE.get(key);
+    if (!entry) {
+      const colors = (PALETTE_BY_ID.get(paletteId) || PALETTE_BY_ID.get('bw')).colors;
+      entry = {
+        colors: colors,
+        lumas: colors.map(function (c) { return luma(c[0], c[1], c[2]); }),
+        plans: new Map(),
+      };
+      YLL_CACHE.set(key, entry);
+    }
+    return entry;
+  }
+
+  // The plan metric: the squared distance between the target and the running
+  // mean of the plan over every prefix, weighted by 1/k. The plan is applied
+  // left to right across the screen, so every prefix *is* a tone the tile shows
+  // — but an unweighted sum is dominated by the first entry and drives the
+  // search towards a single colour, so the later (visually dominant) prefixes
+  // carry proportionally more weight. The last prefix is the plan's mean, which
+  // is exactly what a full tile averages to.
+  // The plan metric is the squared distance between the target and the plan's
+  // *mean* — the one thing a plan is really for. Every entry of a plan lands the
+  // same number of times across a screen tile, so the plan's mean is exactly
+  // what the tile renders to. (Yliluoma's published metric sums the error of
+  // every prefix of the sorted plan instead; implemented literally that sum is
+  // dominated by the first entry, which is whatever dark colour the plan holds,
+  // so the search drifts towards a single colour per target and the tile loses
+  // its tone — the opposite of the point.)
+  // The plan metric is the squared distance between the target and the plan's
+  // *mean*, which is the one thing a plan is really for: every entry of a plan
+  // lands the same number of times across a screen tile, so the plan's mean is
+  // exactly the tone the tile renders.
+  //
+  // Yliluoma's published metric sums the error of every *prefix* of the sorted
+  // plan instead. Implemented literally that sum is dominated by the darkest
+  // entry the plan holds — the first prefix — so the search drifts towards one
+  // colour per target and the tile loses its tone, which is the opposite of the
+  // point (measured: a flat 128 rendered at 207). Weighting the prefixes by 1/k
+  // softens but does not fix it. A cohesion term on top of the mean was also
+  // measured and dropped: it costs real tone accuracy (mean error 5.8 → 10.5
+  // across a target sweep) to buy a modest 30% reduction in entry spread.
+  //
+  // The honest consequence: on a sparse, saturated palette a plan can mix
+  // colours that are individually far from the target, so mixing on a photo
+  // has a granular texture. That is the trade this family makes — pick a dense
+  // palette (a greyscale ramp) or the two-colour variant for a calmer screen.
+  function planError(plan, colors, target) {
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < plan.length; i++) {
+      const c = colors[plan[i]];
+      r += c[0]; g += c[1]; b += c[2];
+    }
+    const k = plan.length || 1;
+    const dr = r / k - target[0], dg = g / k - target[1], db = b / k - target[2];
+    return dr * dr + dg * dg + db * db;
+  }
+
+  // The plan is kept as a luma-sorted multiset; inserting in place is cheaper
+  // than re-sorting and keeps the search working on one canonical form.
+  function insertSorted(plan, lumas, c) {
+    let lo = 0, hi = plan.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (lumas[plan[mid]] <= lumas[c]) lo = mid + 1;
+      else hi = mid;
+    }
+    plan.splice(lo, 0, c);
+    return lo;
+  }
+
+  // The candidate set for a target: its nearest palette colours, plus the two
+  // extremes, which is what lets a plan reach a tone no single entry has.
+  function nearestCandidates(entry, target, count) {
+    const colors = entry.colors;
+    const order = [];
+    for (let i = 0; i < colors.length; i++) {
+      const dr = colors[i][0] - target[0], dg = colors[i][1] - target[1], db = colors[i][2] - target[2];
+      order.push([dr * dr + dg * dg + db * db, i]);
+    }
+    order.sort(function (a, b) { return a[0] - b[0]; });
+    const out = [];
+    for (let i = 0; i < Math.min(count, order.length); i++) out.push(order[i][1]);
+    let lo = 0, hi = 0;
+    for (let i = 1; i < colors.length; i++) {
+      if (entry.lumas[i] < entry.lumas[lo]) lo = i;
+      if (entry.lumas[i] > entry.lumas[hi]) hi = i;
+    }
+    if (out.indexOf(lo) < 0) out.push(lo);
+    if (out.indexOf(hi) < 0) out.push(hi);
+    return out;
+  }
+
+  // Option 2: the two palette colours whose convex mixture best fits the target.
+  function pairMixPlan(colors, target) {
+    let bi = 0, bj = 0, bt = 0, bestErr = Infinity;
+    for (let i = 0; i < colors.length; i++) {
+      const a = colors[i];
+      for (let j = 0; j < colors.length; j++) {
+        const c = colors[j];
+        const dx = c[0] - a[0], dy = c[1] - a[1], dz = c[2] - a[2];
+        const len = dx * dx + dy * dy + dz * dz;
+        let t = 0;
+        if (len > 0) {
+          t = ((target[0] - a[0]) * dx + (target[1] - a[1]) * dy + (target[2] - a[2]) * dz) / len;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+        }
+        const mr = a[0] + t * dx - target[0], mg = a[1] + t * dy - target[1], mb = a[2] + t * dz - target[2];
+        const err = mr * mr + mg * mg + mb * mb;
+        if (err < bestErr) { bestErr = err; bi = i; bj = j; bt = t; }
+      }
+    }
+    const n = Math.round(bt * YLL_STEPS);
+    const plan = [];
+    for (let i = 0; i < YLL_STEPS; i++) plan.push(i < YLL_STEPS - n ? bi : bj);
+    const lumas = colors.map(function (c) { return luma(c[0], c[1], c[2]); });
+    plan.sort(function (a, b) { return lumas[a] - lumas[b]; });
+    return plan;
+  }
+
+  // Options 3/4: start from the best two-colour mix — an exhaustive search, so
+  // the plan can never come out worse than option 2 — then improve it slot by
+  // slot, trying every candidate colour in every slot and keeping what lowers
+  // the error. Option 3 does one sweep over the target's nearest colours;
+  // option 4 sweeps the whole palette three times, which is where its extra
+  // quality comes from. Sweeps only ever accept improvements, so each variant
+  // is bounded from above by the one before it.
+  function searchPlan(entry, target, polish) {
+    const colors = entry.colors, lumas = entry.lumas;
+    const sweeps = polish ? 3 : 1;
+    const cand = nearestCandidates(entry, target, polish ? colors.length : YLL_CANDIDATES);
+    const plan = pairMixPlan(colors, target).slice();
+    for (let pass = 0; pass < sweeps; pass++) {
+      let improved = false;
+      for (let i = 0; i < plan.length; i++) {
+        const removed = plan.splice(i, 1)[0];
+        let best = removed, bestErr = Infinity;
+        for (let ci = 0; ci < cand.length; ci++) {
+          const c = cand[ci];
+          const at = insertSorted(plan, lumas, c);
+          const err = planError(plan, colors, target);
+          if (err < bestErr) { bestErr = err; best = c; }
+          plan.splice(at, 1);
+        }
+        insertSorted(plan, lumas, best);
+        if (best !== removed) improved = true;
+      }
+      if (!improved) break;
+    }
+    while (plan.length < YLL_STEPS) plan.push(plan[plan.length - 1]);
+    if (plan.length > YLL_STEPS) plan.length = YLL_STEPS;
+    return plan;
+  }
+
+  function buildPlan(entry, option, target, key) {
+    let plan = entry.plans.get(key);
+    if (plan) return plan;
+    const colors = entry.colors;
+    const found = option === 2 ? pairMixPlan(colors, target) : searchPlan(entry, target, option === 4);
+    const out = new Uint8Array(YLL_STEPS);
+    for (let i = 0; i < YLL_STEPS; i++) out[i] = found[i];
+    entry.plans.set(key, out);
+    return out;
+  }
+
+  // The ordered-screen rank, reshaped by the strength knob, as a plan index.
+  function planIndex(rank, strength) {
+    const k = strength / 100;
+    let r = k === 1 ? rank : 0.5 + (rank - 0.5) * k;
+    if (r < 0) r = 0;
+    if (r > 0.999999) r = 0.999999;
+    return (r * YLL_STEPS) | 0;
+  }
+
   /* --- mono path ------------------------------------------------------ */
 
   // lumaIn: Float32Array (one per pixel). Returns Uint8ClampedArray of 0/255.
   function ditherMono(lumaIn, w, h, algo, settings, rng) {
     const bias = 128 - settings.threshold;  // threshold = exposure bias
+    const k = settings.ditherStrength / 100;
     const n = w * h;
     const out = new Uint8ClampedArray(n);
     const kind = algo.kind;
 
-    if (kind === 'ordered') {
-      const mat = matrixFor(algo.id);
-      const m = Math.round(Math.sqrt(mat.length));
+    if (kind === 'threshold' || kind === 'ordered' || kind === 'noise' || kind === 'bluenoise' ||
+        kind === 'clustered-noise' || kind === 'formula') {
+      const mat = kind === 'ordered' ? matrixFor(algo.id) : null;
+      const m = mat ? Math.round(Math.sqrt(mat.length)) : 0;
       for (let y = 0; y < h; y++) {
-        const my = (y % m) * m;
+        const row = y * w;
         for (let x = 0; x < w; x++) {
-          const v = lumaIn[y * w + x] + bias;
-          out[y * w + x] = v > mat[my + (x % m)] ? 255 : 0;
+          const i = row + x;
+          const limit = scaleMask(maskValue(algo, x, y, settings, rng, mat, m), k);
+          out[i] = lumaIn[i] + bias > limit ? 255 : 0;
         }
       }
       return out;
     }
-    if (kind === 'noise') {
-      for (let i = 0; i < n; i++) out[i] = lumaIn[i] + bias > rng() * 255 ? 255 : 0;
-      return out;
-    }
-    if (kind === 'bluenoise') {
+
+    if (kind === 'yliluoma') {
+      // The mono path only ever runs with the B&W palette, so a plan entry is
+      // either black or white: out is a hard read of the chosen entry.
+      const entry = yllEntry('bw', algo.option, true);
+      const screen = yliluomaScreen();
+      const sm = Math.round(Math.sqrt(screen.length));
+      const planLuma = entry.luma || (entry.luma = entry.colors.map(function (c) { return luma(c[0], c[1], c[2]); }));
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
-          out[i] = lumaIn[i] + bias > blueNoiseValue(x, y, settings.seed) ? 255 : 0;
+          const v = clamp255(lumaIn[i] + bias);
+          const bin = clampInt(Math.round((v / 255) * (YLL_MONO_LEVELS - 1)), 0, YLL_MONO_LEVELS - 1);
+          const plan = buildPlan(entry, algo.option, [v, v, v], bin);
+          const idx = planIndex(screen[(y % sm) * sm + (x % sm)], settings.ditherStrength);
+          out[i] = planLuma[plan[idx]] > 127 ? 255 : 0;
         }
       }
-      return out;
-    }
-    if (kind === 'threshold') {
-      for (let i = 0; i < n; i++) out[i] = lumaIn[i] + bias > 128 ? 255 : 0;
       return out;
     }
 
@@ -596,14 +1079,11 @@
     const f = new Float32Array(n);
     for (let i = 0; i < n; i++) f[i] = lumaIn[i] + bias;
     if (algo.kernel === 'riemersma') {
-      riemersmaMono(f, w, h, out);
+      riemersmaMono(f, w, h, out, k);
     } else {
-      const kernel = KERNELS[algo.kernel];
-      const coeffs = kernel
-        ? kernel.weights.map(function (t) { return [t[0], t[1], t[2] / kernel.div]; })
-        : KERNELS['floyd-steinberg'].weights.map(function (t) { return [t[0], t[1], t[2] / 16]; });
+      const coeffs = scaledCoeffs(algo, settings.ditherStrength);
       const variable = algo.kernel === 'ostromoukhov';
-      diffuse(f, w, h, out, coeffs, variable);
+      diffuse(f, w, h, out, coeffs, variable, settings.serpentine, k);
     }
     return out;
   }
@@ -622,9 +1102,15 @@
   }
 
   // Generic mono error diffusion, writing the quantised values into `out`.
-  function diffuse(f, w, h, out, coeffs, variable) {
+  // With serpentine on, every other row runs right to left and the kernel is
+  // mirrored to match, which is what stops Floyd–Steinberg's diagonal worms.
+  function diffuse(f, w, h, out, coeffs, variable, serpentine, k) {
+    const rev = serpentine ? mirrorCoeffs(coeffs) : null;
     for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
+      const back = rev !== null && (y & 1) === 1;
+      const use = back ? rev : coeffs;
+      for (let s = 0; s < w; s++) {
+        const x = back ? w - 1 - s : s;
         const i = y * w + x;
         const v = f[i];
         const snapped = v > 128 ? 255 : 0;
@@ -634,13 +1120,14 @@
           const band = clampInt(Math.floor(v / 8), 0, 31) * 4;
           const div = OSTROMOUKHOV[band + 3];
           if (div === 0) continue;
+          const dir = back ? -1 : 1;
           scatter1(f, w, h, y, x, err, [
-            [0, 1, OSTROMOUKHOV[band] / div],
-            [1, -1, OSTROMOUKHOV[band + 1] / div],
-            [1, 0, OSTROMOUKHOV[band + 2] / div],
+            [0, dir, (OSTROMOUKHOV[band] / div) * k],
+            [1, -dir, (OSTROMOUKHOV[band + 1] / div) * k],
+            [1, 0, (OSTROMOUKHOV[band + 2] / div) * k],
           ]);
         } else {
-          scatter1(f, w, h, y, x, err, coeffs);
+          scatter1(f, w, h, y, x, err, use);
         }
       }
     }
@@ -652,20 +1139,20 @@
   // Riemersma carries a queue of sixteen errors and holds the *sum* of it into
   // the current pixel (each entry is stored pre-scaled by the decay), so the
   // full error travels along the serpentine path.
-  function riemersmaMono(f, w, h, out) {
+  function riemersmaMono(f, w, h, out, k) {
     const queue = new Float32Array(RIEMERSMA_LEN);
     let head = 0;
     for (let y = 0; y < h; y++) {
       const leftToRight = (y & 1) === 0;
-      for (let k = 0; k < w; k++) {
-        const x = leftToRight ? k : w - 1 - k;
+      for (let s = 0; s < w; s++) {
+        const x = leftToRight ? s : w - 1 - s;
         const i = y * w + x;
         let carried = 0;
         for (let q = 0; q < RIEMERSMA_LEN; q++) carried += queue[q];
         const v = f[i] + carried;
         const snapped = v > 128 ? 255 : 0;
         out[i] = snapped;
-        queue[head] = (v - snapped) * RIEMERSMA_DECAY;
+        queue[head] = (v - snapped) * RIEMERSMA_DECAY * k;
         head = (head + 1) % RIEMERSMA_LEN;
       }
     }
@@ -674,6 +1161,7 @@
   /* --- palette path --------------------------------------------------- */
 
   const ORDERED_JITTER = 0.3;  // mask amplitude for palette mode, in 0..255
+  const LUT_BITS = 4;          // per-channel target bins for the mixing plans
 
   function ditherPalette(f, w, h, algo, settings, rng) {
     const palette = PALETTE_BY_ID.get(settings.palette) || PALETTE_BY_ID.get('bw');
@@ -682,6 +1170,7 @@
     const n = w * h;
     const out = new Uint8ClampedArray(n * 3);
     const kind = algo.kind;
+    const k = settings.ditherStrength / 100;
 
     function write(i, idx) {
       const c = colors[idx];
@@ -693,18 +1182,38 @@
       return out;
     }
 
-    if (kind === 'ordered' || kind === 'noise' || kind === 'bluenoise') {
+    if (kind === 'ordered' || kind === 'noise' || kind === 'bluenoise' ||
+        kind === 'clustered-noise' || kind === 'formula') {
       const mat = kind === 'ordered' ? matrixFor(algo.id) : null;
       const m = mat ? Math.round(Math.sqrt(mat.length)) : 0;
+      const amp = ORDERED_JITTER * k;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
-          let mask;
-          if (mat) mask = mat[(y % m) * m + (x % m)];
-          else if (kind === 'noise') mask = rng() * 255;
-          else mask = blueNoiseValue(x, y, settings.seed);
-          const d = (mask - 127.5) * ORDERED_JITTER;
+          const d = (maskValue(algo, x, y, settings, rng, mat, m) - 128) * amp;
           write(i, snapIndex(lut, f[i * 3] + d, f[i * 3 + 1] + d, f[i * 3 + 2] + d));
+        }
+      }
+      return out;
+    }
+
+    if (kind === 'yliluoma') {
+      // Each pixel's colour is binned, a mixing plan is built for that bin, and
+      // the ordered screen's rank selects an entry from the plan.
+      const entry = yllEntry(palette.id, algo.option, false);
+      const screen = yliluomaScreen();
+      const sm = Math.round(Math.sqrt(screen.length));
+      const step = 256 >> LUT_BITS;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 3;
+          const br = clampInt(Math.floor(clamp255(f[i]) / step), 0, (1 << LUT_BITS) - 1);
+          const bg = clampInt(Math.floor(clamp255(f[i + 1]) / step), 0, (1 << LUT_BITS) - 1);
+          const bb = clampInt(Math.floor(clamp255(f[i + 2]) / step), 0, (1 << LUT_BITS) - 1);
+          const key = (br << (LUT_BITS * 2)) | (bg << LUT_BITS) | bb;
+          const plan = buildPlan(entry, algo.option, [br * step + step / 2, bg * step + step / 2, bb * step + step / 2], key);
+          const idx = planIndex(screen[(y % sm) * sm + (x % sm)], settings.ditherStrength);
+          write(y * w + x, plan[idx]);
         }
       }
       return out;
@@ -719,8 +1228,8 @@
       let head = 0;
       for (let y = 0; y < h; y++) {
         const leftToRight = (y & 1) === 0;
-        for (let k = 0; k < w; k++) {
-          const x = leftToRight ? k : w - 1 - k;
+        for (let s = 0; s < w; s++) {
+          const x = leftToRight ? s : w - 1 - s;
           const i = (y * w + x) * 3;
           let cr = 0, cg = 0, cb = 0;
           for (let q = 0; q < RIEMERSMA_LEN; q++) {
@@ -732,23 +1241,24 @@
           const idx = snapIndex(lut, r, g, b);
           const c = colors[idx];
           out[i] = c[0]; out[i + 1] = c[1]; out[i + 2] = c[2];
-          queue[head * 3] = (r - c[0]) * RIEMERSMA_DECAY;
-          queue[head * 3 + 1] = (g - c[1]) * RIEMERSMA_DECAY;
-          queue[head * 3 + 2] = (b - c[2]) * RIEMERSMA_DECAY;
+          queue[head * 3] = (r - c[0]) * RIEMERSMA_DECAY * k;
+          queue[head * 3 + 1] = (g - c[1]) * RIEMERSMA_DECAY * k;
+          queue[head * 3 + 2] = (b - c[2]) * RIEMERSMA_DECAY * k;
           head = (head + 1) % RIEMERSMA_LEN;
         }
       }
       return out;
     }
 
-    const kernel = KERNELS[algo.kernel];
-    const coeffs = kernel
-      ? kernel.weights.map(function (t) { return [t[0], t[1], t[2] / kernel.div]; })
-      : KERNELS['floyd-steinberg'].weights.map(function (t) { return [t[0], t[1], t[2] / 16]; });
+    const coeffs = scaledCoeffs(algo, settings.ditherStrength);
     const variable = algo.kernel === 'ostromoukhov';
+    const rev = settings.serpentine ? mirrorCoeffs(coeffs) : null;
 
     for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
+      const back = rev !== null && (y & 1) === 1;
+      const use = back ? rev : coeffs;
+      for (let s = 0; s < w; s++) {
+        const x = back ? w - 1 - s : s;
         const i = (y * w + x) * 3;
         const r = buf[i], g = buf[i + 1], b = buf[i + 2];
         const idx = snapIndex(lut, r, g, b);
@@ -759,13 +1269,14 @@
           const band = clampInt(Math.floor(luma(r, g, b) / 8), 0, 31) * 4;
           const div = OSTROMOUKHOV[band + 3];
           if (div === 0) continue;
+          const dir = back ? -1 : 1;
           scatter3(buf, w, h, y, x, er, eg, eb, [
-            [0, 1, OSTROMOUKHOV[band] / div],
-            [1, -1, OSTROMOUKHOV[band + 1] / div],
-            [1, 0, OSTROMOUKHOV[band + 2] / div],
+            [0, dir, (OSTROMOUKHOV[band] / div) * k],
+            [1, -dir, (OSTROMOUKHOV[band + 1] / div) * k],
+            [1, 0, (OSTROMOUKHOV[band + 2] / div) * k],
           ]);
         } else {
-          scatter3(buf, w, h, y, x, er, eg, eb, coeffs);
+          scatter3(buf, w, h, y, x, er, eg, eb, use);
         }
       }
     }
@@ -794,23 +1305,40 @@
     { id: 'aberration', name: 'Chromatic aberration', hint: 'splits the red and blue channels' },
     { id: 'blocks', name: 'JPEG blocks', hint: 'shifts and crushes 8×8 blocks' },
     { id: 'scanlines', name: 'Scanlines', hint: 'darkens every second row' },
-    { id: 'grain', name: 'Grain', hint: 'seeded monochrome noise' },
-    { id: 'pixelsort', name: 'Pixel sort', hint: 'sorts bright runs by luminance' },
+    {
+      id: 'grain', name: 'Grain', hint: 'seeded noise over the frame',
+      modes: [{ id: 'mono', name: 'Monochrome' }, { id: 'colour', name: 'Colour' }],
+    },
+    {
+      id: 'pixelsort', name: 'Pixel sort', hint: 'sorts bright runs by luminance',
+      modes: [{ id: 'rows', name: 'Rows' }, { id: 'cols', name: 'Columns' }],
+    },
+    { id: 'wave', name: 'Wave ripple', hint: 'sine-displaces every row sideways' },
+    { id: 'drip', name: 'Drip', hint: 'columns slide down and smear' },
+    {
+      id: 'kaleidoscope', name: 'Kaleidoscope', hint: 'mirrors the frame into wedges',
+      modes: [{ id: '2', name: '2-way' }, { id: '4', name: '4-way' }, { id: '8', name: '8-way' }],
+    },
+    { id: 'deadpixels', name: 'Dead pixels', hint: 'stuck black and white pixels' },
+    { id: 'vignette', name: 'Vignette', hint: 'darkens the corners' },
+    { id: 'crt', name: 'CRT bloom & warp', hint: 'barrel warp plus a bright bloom pass' },
   ];
   const GLITCH_BY_ID = new Map(GLITCHES.map(function (g) { return [g.id, g]; }));
+  // The stack position and the effect's own index both fold into each effect's
+  // RNG, so reordering the stack changes the frame without touching the seed.
+  const GLITCH_SEED_INDEX = new Map(GLITCHES.map(function (g, i) { return [g.id, i + 1]; }));
 
   function applyGlitchStack(rgba, w, h, stack, seed) {
     for (let s = 0; s < stack.length; s++) {
       const item = stack[s];
       const amount = clampInt(item.amount, 0, 100);
       if (amount <= 0) continue;
-      const rng = makeRng((((seed >>> 0) ^ hash32(s + 1)) ^ hash32(GLITCH_INDEX[item.id] || 1)) >>> 0);
-      GLITCH_FNS[item.id](rgba, w, h, amount, rng);
+      const idx = GLITCH_SEED_INDEX.get(item.id) || 1;
+      const rng = makeRng((((seed >>> 0) ^ hash32(s + 1)) ^ hash32(idx)) >>> 0);
+      GLITCH_FNS[item.id](rgba, w, h, amount, rng, item.mode);
     }
     return rgba;
   }
-
-  const GLITCH_INDEX = { aberration: 2, blocks: 3, scanlines: 5, grain: 7, pixelsort: 11 };
 
   // Red is sampled from the left and blue from the right, so the two channels
   // slide apart by `shift` pixels while green stays put.
@@ -868,47 +1396,192 @@
     }
   }
 
-  function glitchGrain(d, w, h, amount, rng) {
+  function glitchGrain(d, w, h, amount, rng, mode) {
     const amp = (amount / 100) * 90;
     const n = w * h;
+    const chroma = mode === 'colour';
     for (let i = 0; i < n; i++) {
       const noise = (rng() - 0.5) * amp;
       const p = i * 4;
-      d[p] = clamp255(d[p] + noise);
+      d[p] = clamp255(d[p] + (chroma ? (rng() - 0.5) * amp : noise));
       d[p + 1] = clamp255(d[p + 1] + noise);
-      d[p + 2] = clamp255(d[p + 2] + noise);
+      d[p + 2] = clamp255(d[p + 2] + (chroma ? (rng() - 0.5) * amp : noise));
     }
   }
 
-  function glitchPixelSort(d, w, h, amount) {
+  function glitchPixelSort(d, w, h, amount, rng, mode) {
+    // Rows by default; in column mode the same sweep runs top to bottom.
+    const cols = mode === 'cols';
+    const span = cols ? h : w;
+    const lines = cols ? w : h;
     const cutoff = 220 - (amount / 100) * 160;
-    const rowLuma = new Float32Array(w);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        rowLuma[x] = luma(d[i], d[i + 1], d[i + 2]);
+    const lineLuma = new Float32Array(span);
+    const order = [];
+    for (let line = 0; line < lines; line++) {
+      let i0, step;
+      if (cols) { i0 = line * 4; step = w * 4; }
+      else { i0 = line * w * 4; step = 4; }
+      for (let s = 0; s < span; s++) {
+        const i = i0 + s * step;
+        lineLuma[s] = luma(d[i], d[i + 1], d[i + 2]);
       }
-      let x = 0;
-      while (x < w) {
-        if (rowLuma[x] < cutoff) { x++; continue; }
-        let x1 = x;
-        while (x1 < w && rowLuma[x1] >= cutoff) x1++;
-        if (x1 - x > 2) {
+      let s = 0;
+      while (s < span) {
+        if (lineLuma[s] < cutoff) { s++; continue; }
+        let s1 = s;
+        while (s1 < span && lineLuma[s1] >= cutoff) s1++;
+        if (s1 - s > 2) {
           // Reorder the run's pixels by luminance, darkest first, writing them
-          // back left to right so the run reads as a gradient.
-          const order = [];
-          for (let k = x; k < x1; k++) order.push([rowLuma[k], k]);
+          // back in order so the run reads as a gradient.
+          order.length = 0;
+          for (let k = s; k < s1; k++) order.push([lineLuma[k], k]);
           order.sort(function (a, b) { return a[0] - b[0]; });
           const colors = order.map(function (pair) {
-            const i = (y * w + pair[1]) * 4;
+            const i = i0 + pair[1] * step;
             return [d[i], d[i + 1], d[i + 2]];
           });
           for (let k = 0; k < colors.length; k++) {
-            const dest = (y * w + x + k) * 4;
+            const dest = i0 + (s + k) * step;
             d[dest] = colors[k][0]; d[dest + 1] = colors[k][1]; d[dest + 2] = colors[k][2];
           }
         }
-        x = x1;
+        s = s1;
+      }
+    }
+  }
+
+  // Sine displacement per row — the classic analogue-tape wobble.
+  function glitchWave(d, w, h, amount, rng, mode) {
+    const src = d.slice();
+    const amp = Math.max(1, Math.round((amount / 100) * Math.min(w, h) * 0.06));
+    const period = 12 + rng() * 40;
+    const phase = rng() * Math.PI * 2;
+    for (let y = 0; y < h; y++) {
+      const shift = Math.round(Math.sin((y / period) * Math.PI * 2 + phase) * amp);
+      if (shift === 0) continue;
+      for (let x = 0; x < w; x++) {
+        const sx = (((x + shift) % w) + w) % w;
+        const si = (y * w + sx) * 4, di = (y * w + x) * 4;
+        d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2];
+      }
+    }
+  }
+
+  // Columns slide down and smear the pixels above them into the gap.
+  function glitchDrip(d, w, h, amount, rng, mode) {
+    const src = d.slice();
+    const maxDrop = Math.round((amount / 100) * h * 0.35);
+    if (maxDrop <= 0) return;
+    let x = 0;
+    while (x < w) {
+      const strip = 1 + Math.floor(rng() * 5);
+      const x1 = Math.min(w, x + strip);
+      const drop = Math.round(rng() * maxDrop);
+      for (let cx = x; cx < x1; cx++) {
+        for (let y = 0; y < h; y++) {
+          const sy = y - drop;
+          const si = ((sy < 0 ? 0 : sy) * w + cx) * 4;
+          const di = (y * w + cx) * 4;
+          d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2];
+        }
+      }
+      x = x1;
+    }
+  }
+
+  // Mirrors the frame: 2-way across the vertical axis, 4-way into quadrants,
+  // 8-way in polar wedges around the centre.
+  function glitchKaleidoscope(d, w, h, amount, rng, mode) {
+    const segs = mode === '2' ? 2 : mode === '8' ? 8 : 4;
+    const src = d.slice();
+    const cx = w / 2, cy = h / 2;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sx, sy;
+        if (segs === 2) {
+          sx = x < cx ? w - 1 - x : x;
+          sy = y;
+        } else if (segs === 4) {
+          sx = x < cx ? w - 1 - x : x;
+          sy = y < cy ? h - 1 - y : y;
+        } else {
+          const dx = x - cx, dy = y - cy;
+          const r = Math.sqrt(dx * dx + dy * dy);
+          const wedge = (Math.PI * 2) / segs;
+          let a = Math.atan2(dy, dx);
+          a = ((a % wedge) + wedge) % wedge;
+          if (a > wedge / 2) a = wedge - a;
+          sx = Math.round(cx + Math.cos(a) * r);
+          sy = Math.round(cy + Math.sin(a) * r);
+          sx = clampInt(sx, 0, w - 1);
+          sy = clampInt(sy, 0, h - 1);
+        }
+        const si = (sy * w + sx) * 4, di = (y * w + x) * 4;
+        d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2];
+      }
+    }
+  }
+
+  function glitchDeadPixels(d, w, h, amount, rng, mode) {
+    const density = (amount / 100) * 0.02;
+    const n = w * h;
+    for (let i = 0; i < n; i++) {
+      if (rng() > density) continue;
+      const p = i * 4;
+      const v = rng() < 0.5 ? 0 : 255;
+      d[p] = v; d[p + 1] = v; d[p + 2] = v;
+    }
+  }
+
+  function glitchVignette(d, w, h, amount) {
+    const k = (amount / 100) * 0.85;
+    const cx = w / 2, cy = h / 2;
+    const maxR2 = cx * cx + cy * cy;
+    for (let y = 0; y < h; y++) {
+      const dy = y - cy;
+      for (let x = 0; x < w; x++) {
+        const dx = x - cx;
+        const t = (dx * dx + dy * dy) / maxR2;
+        const kk = 1 - k * t * t;
+        const p = (y * w + x) * 4;
+        d[p] *= kk; d[p + 1] *= kk; d[p + 2] *= kk;
+      }
+    }
+  }
+
+  // Barrel warp plus a linear-light bloom of the bright parts.
+  function glitchCRT(d, w, h, amount, rng, mode) {
+    const k = (amount / 100) * 0.22;
+    const src = d.slice();
+    for (let y = 0; y < h; y++) {
+      const ny = (y / Math.max(1, h - 1)) * 2 - 1;
+      for (let x = 0; x < w; x++) {
+        const nx = (x / Math.max(1, w - 1)) * 2 - 1;
+        const s = 1 + k * (nx * nx + ny * ny);
+        const sx = clampInt(Math.round(((nx * s + 1) / 2) * (w - 1)), 0, w - 1);
+        const sy = clampInt(Math.round(((ny * s + 1) / 2) * (h - 1)), 0, h - 1);
+        const si = (sy * w + sx) * 4, di = (y * w + x) * 4;
+        d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2];
+      }
+    }
+    const bright = new Float32Array(w * h * 3);
+    const cells = w * h;
+    for (let i = 0; i < cells; i++) {
+      const l = luma(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);
+      const t = l > 170 ? (l - 170) / 85 : 0;
+      bright[i * 3] = d[i * 4] * t;
+      bright[i * 3 + 1] = d[i * 4 + 1] * t;
+      bright[i * 3 + 2] = d[i * 4 + 2] * t;
+    }
+    boxBlurRGB(bright, w, h, 2);
+    boxBlurRGB(bright, w, h, 2);
+    const gain = 0.5 + (amount / 100) * 0.9;
+    for (let i = 0; i < cells; i++) {
+      for (let c = 0; c < 3; c++) {
+        const a = SRGB_TO_LINEAR[d[i * 4 + c]];
+        const bi = clampInt(Math.round(bright[i * 3 + c]), 0, 255);
+        const b = SRGB_TO_LINEAR[bi] * gain;
+        d[i * 4 + c] = linearToSrgb255(a + b);
       }
     }
   }
@@ -919,6 +1592,12 @@
     scanlines: glitchScanlines,
     grain: glitchGrain,
     pixelsort: glitchPixelSort,
+    wave: glitchWave,
+    drip: glitchDrip,
+    kaleidoscope: glitchKaleidoscope,
+    deadpixels: glitchDeadPixels,
+    vignette: glitchVignette,
+    crt: glitchCRT,
   };
 
   /* ------------------------------------------------------------------ */
@@ -939,9 +1618,11 @@
     const k = intensity / 100;
     for (let i = 0; i < w * h; i++) {
       for (let c = 0; c < 3; c++) {
-        const a = rgba[i * 4 + c];
-        const b = glow[i * 3 + c] * k;
-        rgba[i * 4 + c] = 255 - ((255 - a) * (255 - b)) / 255;
+        // Light adds in linear space, so a glow keeps its hue instead of
+        // drifting towards white as the two screens overlap.
+        const a = SRGB_TO_LINEAR[rgba[i * 4 + c]];
+        const bi = clampInt(Math.round(glow[i * 3 + c]), 0, 255);
+        rgba[i * 4 + c] = linearToSrgb255(a + SRGB_TO_LINEAR[bi] * k);
       }
     }
     return rgba;
@@ -970,16 +1651,29 @@
   /* settings + pipeline                                                */
   /* ------------------------------------------------------------------ */
 
+  const ALPHA_MODES = ['matte', 'sharpen', 'keep'];
+
   const DEFAULT_SETTINGS = {
     algorithm: 'floyd-steinberg',
     palette: 'bw',
     pixelSize: 2,
     threshold: 128,
     seed: 20261008,
-    adjustments: { brightness: 1, contrast: 1, saturation: 1, hue: 0, blur: 0, sharpen: 0, denoise: false },
+    ditherStrength: 100,
+    serpentine: false,
+    alphaMode: 'matte',
+    toneMap: 'none',
+    toneInk: [0, 0, 0],
+    tonePaper: [255, 255, 255],
+    adjustments: { black: 0, white: 255, gamma: 1, brightness: 1, contrast: 1, saturation: 1, hue: 0, blur: 0, sharpen: 0, denoise: false },
     glitches: [],
     glow: { radius: 0, intensity: 0 },
   };
+
+  function colorTriple(v, fallback) {
+    if (!v || v.length < 3) return fallback.slice();
+    return [clampInt(Math.round(num(v[0], fallback[0])), 0, 255), clampInt(Math.round(num(v[1], fallback[1])), 0, 255), clampInt(Math.round(num(v[2], fallback[2])), 0, 255)];
+  }
 
   function mergeSettings(partial) {
     const s = partial || {};
@@ -991,7 +1685,16 @@
       pixelSize: clampInt(Math.round(s.pixelSize || DEFAULT_SETTINGS.pixelSize), 1, 16),
       threshold: clampInt(Math.round(s.threshold === undefined ? DEFAULT_SETTINGS.threshold : s.threshold), 0, 255),
       seed: (s.seed === undefined ? DEFAULT_SETTINGS.seed : s.seed) >>> 0,
+      ditherStrength: clampInt(Math.round(num(s.ditherStrength, DEFAULT_SETTINGS.ditherStrength)), 0, 200),
+      serpentine: !!s.serpentine,
+      alphaMode: ALPHA_MODES.indexOf(s.alphaMode) >= 0 ? s.alphaMode : DEFAULT_SETTINGS.alphaMode,
+      toneMap: TONE_MAP_BY_ID.has(s.toneMap) ? s.toneMap : DEFAULT_SETTINGS.toneMap,
+      toneInk: colorTriple(s.toneInk, DEFAULT_SETTINGS.toneInk),
+      tonePaper: colorTriple(s.tonePaper, DEFAULT_SETTINGS.tonePaper),
       adjustments: {
+        black: clampInt(Math.round(num(adj.black, 0)), 0, 255),
+        white: clampInt(Math.round(num(adj.white, 255)), 0, 255),
+        gamma: num(adj.gamma, 1),
         brightness: num(adj.brightness, 1),
         contrast: num(adj.contrast, 1),
         saturation: num(adj.saturation, 1),
@@ -1002,7 +1705,12 @@
       },
       glitches: (s.glitches || []).filter(function (g) {
         return g && GLITCH_BY_ID.has(g.id) && g.amount > 0;
-      }).map(function (g) { return { id: g.id, amount: clampInt(Math.round(g.amount), 0, 100) }; }),
+      }).map(function (g) {
+        const meta = GLITCH_BY_ID.get(g.id);
+        const modes = meta.modes;
+        const mode = modes && modes.some(function (m) { return m.id === g.mode; }) ? g.mode : (modes ? modes[0].id : undefined);
+        return { id: g.id, amount: clampInt(Math.round(g.amount), 0, 100), mode: mode };
+      }),
       glow: { radius: num(glow.radius, 0), intensity: num(glow.intensity, 0) },
     };
   }
@@ -1042,6 +1750,11 @@
       data = small.f; dw = small.w; dh = small.h;
     }
 
+    // Alpha is averaged per chunk and carried beside the colour, never mixed
+    // into it: the hidden RGB under a transparent pixel must not tint its
+    // neighbours.
+    const alphaSmall = settings.alphaMode === 'matte' ? null : downscaleAlpha(src, w, h, dw, dh);
+
     const algo = ALGORITHM_BY_ID.get(settings.algorithm) || ALGORITHM_BY_ID.get('floyd-steinberg');
     const rng = makeRng(settings.seed);
     let rgb;
@@ -1062,7 +1775,17 @@
 
     const colors = countColorsRGB(rgb);
 
+    // Tone map sits between the press and the finishing: it re-inks the dither
+    // rather than grading the photo, so 1-bit stays exactly two inks.
+    if (settings.toneMap !== 'none') {
+      const mapped = new Float32Array(dw * dh * 3);
+      for (let i = 0; i < dw * dh * 3; i++) mapped[i] = rgb[i];
+      applyToneMap(mapped, dw, dh, settings);
+      for (let i = 0; i < dw * dh * 3; i++) rgb[i] = mapped[i];
+    }
+
     const rgba = toRGBA(rgb, dw, dh);
+    if (alphaSmall) applyAlpha(rgba, dw, dh, alphaSmall, settings);
     if (settings.glitches.length) applyGlitchStack(rgba, dw, dh, settings.glitches, settings.seed);
     if (settings.glow.radius > 0 && settings.glow.intensity > 0) {
       applyGlow(rgba, dw, dh, settings.glow.radius, settings.glow.intensity);
@@ -1070,6 +1793,49 @@
 
     const out = dw === w && dh === h ? rgba : upscaleNearest(rgba, dw, dh, w, h);
     return { data: out, width: w, height: h, ms: now() - t0, colors: colors };
+  }
+
+  // Chunk-mean alpha, 0..1, from the source RGBA buffer.
+  function downscaleAlpha(src, w, h, sw, sh) {
+    const out = new Float32Array(sw * sh);
+    for (let oy = 0; oy < sh; oy++) {
+      const y0 = Math.floor((oy * h) / sh);
+      const y1 = Math.max(y0 + 1, Math.floor(((oy + 1) * h) / sh));
+      for (let ox = 0; ox < sw; ox++) {
+        const x0 = Math.floor((ox * w) / sw);
+        const x1 = Math.max(x0 + 1, Math.floor(((ox + 1) * w) / sw));
+        let sum = 0, count = 0;
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) {
+            sum += src[(y * w + x) * 4 + 3];
+            count++;
+          }
+        }
+        out[oy * sw + ox] = sum / count / 255;
+      }
+    }
+    return out;
+  }
+
+  // Two ways to carry transparency through the press: `sharpen` dithers the
+  // matte itself against a Bayer screen (hard edges, no grey), `keep` writes the
+  // chunk average back out as a real alpha channel for PNG export.
+  function applyAlpha(rgba, w, h, alphaSmall, settings) {
+    const sharpen = settings.alphaMode === 'sharpen';
+    const mat = sharpen ? matrixFor('bayer4') : null;
+    const m = mat ? Math.round(Math.sqrt(mat.length)) : 0;
+    const k = settings.ditherStrength / 100;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (sharpen) {
+          const limit = scaleMask(mat[(y % m) * m + (x % m)], k) / 255;
+          rgba[i * 4 + 3] = alphaSmall[i] > limit ? 255 : 0;
+        } else {
+          rgba[i * 4 + 3] = clamp255(Math.round(alphaSmall[i] * 255));
+        }
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -1081,18 +1847,39 @@
     PALETTES: PALETTES,
     GLITCHES: GLITCHES,
     KERNELS: KERNELS,
+    TONE_MAPS: TONE_MAPS,
+    ALPHA_MODES: ALPHA_MODES,
     // building blocks
     makeRng: makeRng,
     bayerRanks: bayerRanks,
     matrixFor: matrixFor,
+    clusteredDotRanks: clusteredDotRanks,
+    spiralRanks: spiralRanks,
+    lineRanks: lineRanks,
+    diagonalRanks: diagonalRanks,
+    checksRanks: checksRanks,
     voidAndCluster: voidAndCluster,
+    valueNoise: valueNoise,
+    ignValue: ignValue,
+    r2Value: r2Value,
     blueNoiseValue: blueNoiseValue,
+    blueNoiseRanks: blueNoiseRanks,
     paletteLut: paletteLut,
     snapIndex: snapIndex,
+    // mixing plans (Yliluoma)
+    mixingPlan: function (paletteId, option, target) {
+      const entry = yllEntry(paletteId, option, false);
+      const key = 't' + ((target[0] & 255) << 16 | (target[1] & 255) << 8 | (target[2] & 255));
+      return Array.prototype.slice.call(buildPlan(entry, option, target, key));
+    },
+    planError: planError,
     // stages
     applyAdjustments: applyAdjustments,
+    applyToneMap: applyToneMap,
     applyGlitchStack: applyGlitchStack,
     applyGlow: applyGlow,
+    applyAlpha: applyAlpha,
+    downscaleAlpha: downscaleAlpha,
     countColors: countColorsRGB,
     // the pipeline
     mergeSettings: mergeSettings,

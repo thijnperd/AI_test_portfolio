@@ -82,6 +82,7 @@ file directly.
 ## Current projects
 
 - [algorithmic art](algorithmic%20art) — generative art experiments using HTML, CSS, and JavaScript.
+- [dither studio](dither%20studio) — a browser dithering studio that reads an image as a print proof: 43 algorithms across ordered screens, error diffusion, stochastic masks and Yliluoma colour mixing, 22 hardware and ink palettes, pixel-size chunking, a tone-map ink system, alpha matte dithering, an 11-effect glitch stack, glow, text/ASCII mode, presets and PNG export, with the DOM-free core covered by Node tests and the sources it was researched from recorded in `SOURCES.md`.
 - [game of life](game%20of%20life) — interactive Conway's Game of Life simulation in HTML, CSS, and JavaScript, with Node tests for the rules.
 - [logic puzzles](logic%20puzzles) — Sudoku and the binary puzzle (Binairo) with a generator that proves every puzzle has exactly one solution and a solver that can be stepped one deduction at a time (naked and hidden singles, rule deductions, and a labelled guess when logic stalls), in HTML, CSS, and JavaScript, with Node tests for both cores.
 - [maze generator and solver](maze%20generator%20and%20solver) — animated maze construction and pathfinding visualizer in HTML, CSS, and JavaScript, with Node tests for the algorithms.

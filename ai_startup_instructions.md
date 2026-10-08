@@ -254,6 +254,7 @@ At the moment, these are the instruction-bearing files to check:
 - `wave function collapse/test.js` (tests are an executable specification for the WFC solver)
 - `dither studio/README.md` (Dither Studio overview)
 - `dither studio/(ai instructions).md` (Dither Studio project guidance and core invariants)
+- `dither studio/SOURCES.md` (where Dither Studio's features, algorithm tables and palettes came from)
 - `dither studio/test.js` (tests are an executable specification for the dither core)
 - `Wiekentwie/README.md` (Wiekentwie overview)
 - `Wiekentwie/(ai instructions).md` (Wiekentwie project guidance)

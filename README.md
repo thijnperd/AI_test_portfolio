@@ -11,6 +11,7 @@ also runs in Node.js so its rules are covered by tests.
 | Project | What it is |
 |---|---|
 | [algorithmic art](algorithmic%20art) | A zero-dependency generative-art studio: a gallery of seeded, reproducible sketches with PNG export. |
+| [dither studio](dither%20studio) | A print shop for pixels: 43 dithering algorithms, 22 palettes, tone maps, alpha mattes, an 11-effect glitch stack and text mode, with the whole core under Node tests. |
 | [analog horror raycaster](analog%20horror%20raycaster) | "Static Halls" — a first-person raycasting horror game with procedural fog, a stalking presence, a shard shop and two endings. |
 | [boids](boids) | Reynolds' flocking, from three steering rules with adjustable weights. |
 | [falling sand](falling%20sand) | A particle sandbox with gravity, density, hydrostatic pressure and wet-sand repose. |
@@ -33,14 +34,15 @@ install. For the projects with a testable core, the tests use Node's built-in
 cd boids && node test.js
 ```
 
-That covers `2048`, `analog horror raycaster`, `boids`, `falling sand`,
-`fluid dynamics`, `game of life`, `logic puzzles`, `maze generator and solver`,
-and `wave function collapse`. (Wiekentwie is tested with PowerShell against a
-real Excel install; the algorithmic-art studio is verified in the browser.)
+That covers `2048`, `analog horror raycaster`, `boids`, `dither studio`,
+`falling sand`, `fluid dynamics`, `game of life`, `logic puzzles`,
+`maze generator and solver`, and `wave function collapse`. (Wiekentwie is
+tested with PowerShell against a real Excel install; the algorithmic-art studio
+is verified in the browser.)
 
 ## How the repository is organised
 
-Twelve independent projects, plus the shared documents and tooling that keep
+Thirteen independent projects, plus the shared documents and tooling that keep
 them consistent:
 
 - [`ai_startup_instructions.md`](ai_startup_instructions.md) — the workflow for

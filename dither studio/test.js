@@ -1,8 +1,9 @@
 /* test.js — Node tests for Dither Studio's core (dither.js).
  *
- * The core is DOM-free on purpose, so the rules can be pinned here:
- * matrices, mask generation, Lab colour math, every dither family, the
- * adjustments, the glitch stack, the pipeline, and the performance budget.
+ * The core is DOM-free on purpose, so the rules can be pinned here: matrices
+ * and generated screens, mask generation, the palette quantizer, every dither
+ * family, the Yliluoma mixing plans, the adjustments and tone maps, alpha,
+ * the glitch stack, the pipeline, and the performance budget.
  *
  * Run from this folder:  node test.js
  */
@@ -42,7 +43,8 @@ function makeSource(w, h, fn) {
     for (let x = 0; x < w; x++) {
       const c = fn(x, y);
       const i = (y * w + x) * 4;
-      data[i] = c[0]; data[i + 1] = c[1]; data[i + 2] = c[2]; data[i + 3] = 255;
+      data[i] = c[0]; data[i + 1] = c[1]; data[i + 2] = c[2];
+      data[i + 3] = c[3] === undefined ? 255 : c[3];
     }
   }
   return { data: data, width: w, height: h };
@@ -105,7 +107,9 @@ test('Bayer 4×4 and 8×8 contain every rank exactly once', function () {
 });
 
 test('normalised matrices span most of 0..255 but never touch the ends', function () {
-  ['bayer2', 'bayer4', 'bayer8', 'clustered-dot', 'halftone', 'void-cluster'].forEach(function (id) {
+  ['bayer2', 'bayer4', 'bayer8', 'bayer16', 'clustered-dot', 'clustered-dot-8', 'halftone', 'halftone-8',
+   'halftone-16', 'spiral8', 'line-h2', 'line-v2', 'line-h4', 'line-v4', 'diagonal4', 'diagonal8',
+   'checks', 'void-cluster'].forEach(function (id) {
     const mat = D.matrixFor(id);
     let min = Infinity, max = -Infinity;
     for (let i = 0; i < mat.length; i++) {
@@ -123,6 +127,63 @@ test('normalised matrices span most of 0..255 but never touch the ends', functio
 test('clustered-dot and halftone are 4×4 with 16 distinct ranks', function () {
   assert.strictEqual(D.matrixFor('clustered-dot').length, 16);
   assert.strictEqual(D.matrixFor('halftone').length, 16);
+});
+
+test('Bayer 16×16 is a full permutation', function () {
+  const ranks = Array.from(D.bayerRanks(16)).sort(function (a, b) { return a - b; });
+  assert.strictEqual(ranks.length, 256);
+  for (let i = 0; i < 256; i++) assert.strictEqual(ranks[i], i);
+});
+
+test('the clustered-dot screen grows outward from the tile centre', function () {
+  const ranks = D.clusteredDotRanks(8);
+  // The very first rank must sit at the centre, the last in a corner.
+  let first = -1, last = -1;
+  for (let i = 0; i < ranks.length; i++) {
+    if (ranks[i] === 0) first = i;
+    if (ranks[i] === 63) last = i;
+  }
+  assert.strictEqual(first, 3 * 8 + 3, 'rank 0 is the centre cell');
+  const lx = last % 8, ly = (last / 8) | 0;
+  assert.ok((lx === 0 || lx === 7) && (ly === 0 || ly === 7), 'rank 63 is a corner (' + lx + ',' + ly + ')');
+});
+
+test('line screens thicken a whole line at a time', function () {
+  const ranks = D.lineRanks(2, false);
+  // Horizontal screen: rows 0 and 1 are one group, so the bottom row starts
+  // half way through the ramp.
+  assert.deepStrictEqual(Array.from(ranks), [0, 1, 2, 3]);
+  const vertical = D.lineRanks(2, true);
+  assert.deepStrictEqual(Array.from(vertical), [0, 2, 1, 3]);
+});
+
+test('the checkerboard screen fills one parity before the other', function () {
+  const n = 4;
+  const ranks = D.checksRanks(n);
+  // Even cells take the low half of the ranks, odd cells the high half: at a
+  // half-tone level the screen is a perfect checkerboard.
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const rank = ranks[y * n + x];
+      const even = ((x + y) & 1) === 0;
+      assert.ok(even ? rank < n * n / 2 : rank >= n * n / 2, 'parity of rank at ' + x + ',' + y);
+    }
+  }
+});
+
+test('diagonal screens rank one diagonal band at a time', function () {
+  const n = 8;
+  const ranks = D.diagonalRanks(n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      assert.strictEqual(Math.floor(ranks[y * n + x] / n), (x + y) % n, 'band at ' + x + ',' + y);
+    }
+  }
+});
+
+test('generated screens are deterministic across calls', function () {
+  assert.ok(sameBytes(D.spiralRanks(8, 2), D.spiralRanks(8, 2)));
+  assert.ok(!sameBytes(D.spiralRanks(8, 1), D.spiralRanks(8, 4)));
 });
 
 /* ------------------------------------------------------------------ */
@@ -154,6 +215,18 @@ test('16×16 mask generation stays inside the lazy cost budget', function () {
   const ms = Date.now() - t0;
   assert.ok(ms < 400, 'generation took ' + ms + ' ms');
   console.log('       (16×16 mask generated in ' + ms + ' ms)');
+});
+
+test('the 32×32 blue-noise mask builds cold inside its lazy budget', function () {
+  // Runs before any algorithm sweep, so this measures the real first build
+  // rather than a cache hit.
+  const t0 = Date.now();
+  const ranks = D.blueNoiseRanks(32);
+  const ms = Date.now() - t0;
+  assert.strictEqual(ranks.length, 1024);
+  assert.strictEqual(new Set(Array.from(ranks)).size, 1024, 'a full permutation');
+  assert.ok(ms < 3000, 'generation took ' + ms + ' ms');
+  console.log('       (32×32 mask generated cold in ' + ms + ' ms)');
 });
 
 test('blue-noise values are deterministic, bounded, and seed-sensitive', function () {
@@ -255,16 +328,44 @@ test('every error-diffusion kernel is a proper normalised spread', function () {
   });
 });
 
-test('all 20 algorithms are registered and reachable', function () {
-  assert.strictEqual(D.ALGORITHMS.length, 20);
+test('every registered algorithm is reachable and keeps the canvas size', function () {
+  assert.strictEqual(D.ALGORITHMS.length, 43);
   const src = flat(20, 20, 100);
   D.ALGORITHMS.forEach(function (algo) {
     const res = D.process(src, { algorithm: algo.id, palette: 'bw', pixelSize: 2, seed: 9 });
     assert.strictEqual(res.width, 20, algo.id + ' width');
     assert.strictEqual(res.height, 20, algo.id + ' height');
   });
-  assert.strictEqual(D.ALGORITHMS.filter(function (a) { return a.kind === 'diffusion'; }).length, 11);
-  assert.strictEqual(D.ALGORITHMS.filter(function (a) { return a.kind === 'ordered'; }).length, 6);
+  function count(kind) { return D.ALGORITHMS.filter(function (a) { return a.kind === kind; }).length; }
+  assert.strictEqual(count('diffusion'), 14);
+  assert.strictEqual(count('ordered'), 18);
+  assert.strictEqual(count('yliluoma'), 3);
+  assert.strictEqual(count('formula'), 3);
+  assert.strictEqual(count('threshold'), 1);
+  assert.strictEqual(count('noise') + count('bluenoise') + count('clustered-noise'), 4);
+  // Every id is unique, or the picker would silently shadow one.
+  const ids = new Set(D.ALGORITHMS.map(function (a) { return a.id; }));
+  assert.strictEqual(ids.size, D.ALGORITHMS.length);
+});
+
+test('dither strength scales the mask down to a plain threshold', function () {
+  const src = makeSource(32, 32, function (x, y) { return [64 + x * 4, 64 + y * 4, 120]; });
+  const off = D.process(src, { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, ditherStrength: 0 });
+  const plain = D.process(src, { algorithm: 'threshold', palette: 'bw', pixelSize: 1 });
+  assert.ok(sameBytes(off.data, plain.data), 'strength 0 is exactly a threshold');
+  const full = D.process(src, { algorithm: 'bayer8', palette: 'bw', pixelSize: 1, ditherStrength: 100 });
+  assert.ok(!sameBytes(off.data, full.data), 'strength 100 brings the screen back');
+  const pushed = D.process(src, { algorithm: 'random-noise', palette: 'bw', pixelSize: 1, ditherStrength: 160 });
+  const normal = D.process(src, { algorithm: 'random-noise', palette: 'bw', pixelSize: 1, ditherStrength: 100 });
+  assert.ok(!sameBytes(pushed.data, normal.data), 'overdrive pushes the noise further out');
+});
+
+test('serpentine sweeps change the pattern without breaking tone', function () {
+  const src = flat(48, 48, 90);
+  const normal = D.process(src, { algorithm: 'floyd-steinberg', palette: 'bw', pixelSize: 1, seed: 2 });
+  const snake = D.process(src, { algorithm: 'floyd-steinberg', palette: 'bw', pixelSize: 1, seed: 2, serpentine: true });
+  assert.ok(!sameBytes(normal.data, snake.data), 'the sweep order changes the pattern');
+  assert.ok(Math.abs(whiteFraction(snake) - 90 / 255) < 0.06, 'tone is still reproduced');
 });
 
 /* ------------------------------------------------------------------ */
@@ -520,7 +621,397 @@ test('colour counting sees the dither stage, not the glow', function () {
 });
 
 /* ------------------------------------------------------------------ */
-/* 10. performance budget                                             */
+/* 10. Yliluoma mixing plans                                          */
+/* ------------------------------------------------------------------ */
+
+group('Yliluoma mixing plans');
+
+const C64 = D.PALETTES.find(function (p) { return p.id === 'c64'; }).colors;
+
+function planMean(plan) {
+  const m = [0, 0, 0];
+  plan.forEach(function (i) {
+    m[0] += C64[i][0] / plan.length;
+    m[1] += C64[i][1] / plan.length;
+    m[2] += C64[i][2] / plan.length;
+  });
+  return m;
+}
+
+test('a plan is a sorted multiset of valid palette indices', function () {
+  [2, 3, 4].forEach(function (option) {
+    const plan = D.mixingPlan('c64', option, [128, 128, 128]);
+    assert.strictEqual(plan.length, 16, 'plan length for option ' + option);
+    plan.forEach(function (i) {
+      assert.ok(i >= 0 && i < C64.length, 'index ' + i + ' is in the palette');
+    });
+    for (let i = 1; i < plan.length; i++) {
+      const la = 0.2126 * C64[plan[i - 1]][0] + 0.7152 * C64[plan[i - 1]][1] + 0.0722 * C64[plan[i - 1]][2];
+      const lb = 0.2126 * C64[plan[i]][0] + 0.7152 * C64[plan[i]][1] + 0.0722 * C64[plan[i]][2];
+      assert.ok(la <= lb, 'plan is sorted by luma at ' + i);
+    }
+  });
+});
+
+test('the pair mix uses exactly two colours, the searched plans use more when it helps', function () {
+  const target = [200, 180, 60];
+  const pair = D.mixingPlan('c64', 2, target);
+  assert.ok(new Set(pair).size <= 2, 'option 2 mixes two colours');
+  const greedy = D.mixingPlan('c64', 3, target);
+  assert.ok(new Set(greedy).size >= 2, 'option 3 mixes at least two colours');
+});
+
+test('the plan error falls as the search gets smarter', function () {
+  [[40, 40, 40], [128, 128, 128], [200, 180, 60], [20, 60, 200], [90, 20, 20]].forEach(function (target) {
+    const e2 = D.planError(D.mixingPlan('c64', 2, target), C64, target);
+    const e3 = D.planError(D.mixingPlan('c64', 3, target), C64, target);
+    const e4 = D.planError(D.mixingPlan('c64', 4, target), C64, target);
+    const label = target.join(',');
+    assert.ok(e3 <= e2, 'the improved mix is never worse than two colours for ' + label +
+      ' (' + e3.toFixed(0) + ' <= ' + e2.toFixed(0) + ')');
+    assert.ok(e4 <= e3, 'the wider search never makes it worse for ' + label +
+      ' (' + e4.toFixed(0) + ' <= ' + e3.toFixed(0) + ')');
+  });
+  // And it is genuinely better somewhere: a two-colour mix cannot reach a
+  // target that sits between three palette colours as closely.
+  const awkward = [192, 176, 150];
+  assert.ok(D.planError(D.mixingPlan('c64', 4, awkward), C64, awkward) <
+    D.planError(D.mixingPlan('c64', 2, awkward), C64, awkward), 'more entries, better mix');
+});
+
+test('a flat patch under a mixing plan averages out to the target colour', function () {
+  // The 8×8 screen is a permutation, so every plan entry lands the same number
+  // of times and the patch mean is the plan mean — a genuine tone match.
+  [[64, 64, 64], [128, 128, 128], [192, 176, 150]].forEach(function (target) {
+    const src = makeSource(32, 32, function () { return target; });
+    const res = D.process(src, { algorithm: 'yliluoma-polished', palette: 'c64', pixelSize: 1, seed: 1 });
+    const allowed = new Set(C64.map(function (c) { return (c[0] << 16) | (c[1] << 8) | c[2]; }));
+    let r = 0, g = 0, b = 0;
+    const n = res.width * res.height;
+    for (let i = 0; i < n; i++) {
+      const c = (res.data[i * 4] << 16) | (res.data[i * 4 + 1] << 8) | res.data[i * 4 + 2];
+      assert.ok(allowed.has(c), 'plan output stays in the palette');
+      r += res.data[i * 4]; g += res.data[i * 4 + 1]; b += res.data[i * 4 + 2];
+    }
+    const dr = r / n - target[0], dg = g / n - target[1], db = b / n - target[2];
+    function dist(c) {
+      const er = c[0] - target[0], eg = c[1] - target[1], eb = c[2] - target[2];
+      return Math.sqrt(er * er + eg * eg + eb * eb);
+    }
+    // The plan is searched for the pixel's 4-bit bin centre (what the cache is
+    // keyed on), so measure the mixing against that, and the result against the
+    // real target separately.
+    const centre = target.map(function (v) { return (v >> 4) * 16 + 8; });
+    const drc = r / n - centre[0], dgc = g / n - centre[1], dbc = b / n - centre[2];
+    const centreErr = Math.sqrt(drc * drc + dgc * dgc + dbc * dbc);
+    assert.ok(centreErr < 6, 'mixes to its bin centre within 6 units, got ' + centreErr.toFixed(1));
+    let nearest = Infinity;
+    C64.forEach(function (c) { nearest = Math.min(nearest, dist(c)); });
+    const err = dist([r / n, g / n, b / n]);
+    assert.ok(err < nearest, 'and the rendered patch (' + err.toFixed(1) +
+      ') still beats the nearest single colour (' + nearest.toFixed(1) + ')');
+  });
+});
+
+test('mono Yliluoma mixing still prints black and white only', function () {
+  const src = flat(32, 32, 128);
+  ['yliluoma-2', 'yliluoma-greedy', 'yliluoma-polished'].forEach(function (algorithm) {
+    const res = D.process(src, { algorithm: algorithm, palette: 'bw', pixelSize: 1, seed: 3 });
+    uniqueColors(res).forEach(function (c) {
+      assert.ok(c === 0 || c === 0xffffff, algorithm + ' produced ' + c.toString(16));
+    });
+    const frac = whiteFraction(res);
+    assert.ok(Math.abs(frac - 0.5) < 0.06, algorithm + ' flat 128 → ' + frac.toFixed(3) + ' white');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 11. tone maps and alpha                                            */
+/* ------------------------------------------------------------------ */
+
+group('tone maps and alpha');
+
+test('a tone map sends black to the ink and white to the paper', function () {
+  const black = D.process(flat(8, 8, 0), { algorithm: 'threshold', palette: 'bw', pixelSize: 1, toneMap: 'sepia' });
+  assert.strictEqual(black.data[0], 43);
+  assert.strictEqual(black.data[1], 32);
+  assert.strictEqual(black.data[2], 24);
+  const white = D.process(flat(8, 8, 255), { algorithm: 'threshold', palette: 'bw', pixelSize: 1, toneMap: 'sepia' });
+  assert.strictEqual(white.data[0], 245);
+  assert.strictEqual(white.data[1], 222);
+  assert.strictEqual(white.data[2], 179);
+});
+
+test('a tone map keeps a 1-bit dither at exactly two inks', function () {
+  const src = makeSource(24, 24, function (x, y) { return [x * 10, 255 - y * 10, 128]; });
+  const res = D.process(src, { algorithm: 'floyd-steinberg', palette: 'bw', pixelSize: 1, toneMap: 'blueprint', seed: 2 });
+  const colors = uniqueColors(res);
+  assert.strictEqual(colors.size, 2, 'two inks, got ' + colors.size);
+  assert.strictEqual(res.colors, 2, 'and the readout still counts the dither stage');
+});
+
+test('the custom tone map uses the ink and paper it is given', function () {
+  const res = D.process(flat(8, 8, 0), {
+    algorithm: 'threshold', palette: 'bw', pixelSize: 1, toneMap: 'custom',
+    toneInk: [10, 90, 20], tonePaper: [250, 250, 200],
+  });
+  assert.strictEqual(res.data[0], 10);
+  assert.strictEqual(res.data[1], 90);
+  assert.strictEqual(res.data[2], 20);
+});
+
+test('alpha sharpen dithers the matte to 0 or 255 and follows the gradient', function () {
+  const w = 64, h = 16;
+  const src = makeSource(w, h, function (x) {
+    const a = Math.round((x / (w - 1)) * 255);
+    return [128, 128, 128, a];
+  });
+  const res = D.process(src, { algorithm: 'floyd-steinberg', palette: 'bw', pixelSize: 4, alphaMode: 'sharpen', ditherStrength: 0 });
+  const strips = [0, 0, 0, 0];
+  const counts = [0, 0, 0, 0];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = res.data[(y * w + x) * 4 + 3];
+      assert.ok(a === 0 || a === 255, 'alpha is hard, got ' + a);
+      const s = Math.min(3, (x / w) * 4 | 0);
+      counts[s]++;
+      if (a === 255) strips[s]++;
+    }
+  }
+  const frac = strips.map(function (v, i) { return v / counts[i]; });
+  for (let i = 1; i < 4; i++) {
+    assert.ok(frac[i] >= frac[i - 1], 'opacity rises left to right: ' + frac.join(', '));
+  }
+  assert.ok(frac[3] > 0.9 && frac[0] < 0.1, 'ends are fully opaque and fully clear');
+});
+
+test('alpha keep writes the chunk average as a real alpha channel', function () {
+  const w = 32, h = 8;
+  const src = makeSource(w, h, function (x) { return [200, 40, 40, Math.round((x / (w - 1)) * 255)]; });
+  const res = D.process(src, { algorithm: 'bayer4', palette: 'bw', pixelSize: 4, alphaMode: 'keep' });
+  const seen = new Set();
+  for (let y = 0; y < h; y++) {
+    const rowStart = res.data[(y * w) * 4 + 3];
+    for (let x = 0; x < w; x++) {
+      const a = res.data[(y * w + x) * 4 + 3];
+      seen.add(a);
+      assert.ok(a >= 0 && a <= 255, 'alpha in range');
+      // One value per chunk: eight chunks across, so four pixels share it.
+      assert.strictEqual(a, res.data[(y * w + (x - (x % 4))) * 4 + 3], 'alpha is constant across the chunk');
+      assert.ok(rowStart !== undefined);
+    }
+  }
+  assert.ok(seen.size >= 6, 'a gradient keeps several alpha levels (got ' + seen.size + ')');
+  assert.ok(Math.min.apply(null, Array.from(seen)) < 60, 'the left chunks are mostly clear');
+  assert.ok(Math.max.apply(null, Array.from(seen)) > 200, 'the right chunks are mostly opaque');
+});
+
+test('alpha matte leaves the frame fully opaque', function () {
+  const src = makeSource(8, 8, function () { return [128, 128, 128, 0]; });
+  const res = D.process(src, { algorithm: 'bayer4', palette: 'bw', pixelSize: 2 });
+  for (let i = 0; i < 8 * 8; i++) assert.strictEqual(res.data[i * 4 + 3], 255);
+  assert.strictEqual(D.mergeSettings({}).alphaMode, 'matte');
+  assert.strictEqual(D.mergeSettings({ alphaMode: 'nonsense' }).alphaMode, 'matte');
+});
+
+test('the alpha matte is averaged per chunk, not per pixel', function () {
+  // Alternating columns: every chunk straddles one clear and one opaque source
+  // pixel, so a per-chunk average is exactly half everywhere.
+  const src = makeSource(4, 4, function (x) { return [0, 0, 0, x % 2 ? 255 : 0]; });
+  const res = D.process(src, { algorithm: 'threshold', palette: 'bw', pixelSize: 2, alphaMode: 'keep' });
+  for (let i = 0; i < 16; i++) assert.strictEqual(res.data[i * 4 + 3], 128, 'chunk average at ' + i);
+});
+
+/* ------------------------------------------------------------------ */
+/* 12. the wider glitch stack                                         */
+/* ------------------------------------------------------------------ */
+
+group('wider glitch stack');
+
+function imageOf(w, h, fn) {
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = fn(x, y);
+      const i = (y * w + x) * 4;
+      rgba[i] = c[0]; rgba[i + 1] = c[1]; rgba[i + 2] = c[2]; rgba[i + 3] = 255;
+    }
+  }
+  return rgba;
+}
+
+test('every glitch names itself and only offers modes it implements', function () {
+  assert.strictEqual(D.GLITCHES.length, 11);
+  const ids = new Set();
+  D.GLITCHES.forEach(function (g) {
+    assert.ok(g.id && g.name && g.hint, 'metadata for ' + g.id);
+    assert.ok(!ids.has(g.id), 'unique id ' + g.id);
+    ids.add(g.id);
+    if (g.modes) g.modes.forEach(function (m) { assert.ok(m.id && m.name); });
+  });
+  const merged = D.mergeSettings({ glitches: [{ id: 'grain', amount: 40, mode: 'nope' }, { id: 'kaleidoscope', amount: 30 }] });
+  assert.strictEqual(merged.glitches[0].mode, 'mono', 'unknown modes fall back to the first');
+  assert.strictEqual(merged.glitches[1].mode, '2');
+});
+
+test('wave ripple shifts whole rows and wraps them', function () {
+  const w = 64, h = 32;
+  const src = imageOf(w, h, function (x) { return x === 16 ? [255, 255, 255] : [0, 0, 0]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'wave', amount: 100 }], 5);
+  let movedRows = 0, before = 0, after = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (src[i] > 0) before++;
+      if (out[i] > 0) after++;
+      if (x === 16 && src[i] !== out[i]) movedRows++;
+    }
+  }
+  assert.ok(movedRows > 0, 'some rows are displaced');
+  assert.strictEqual(after, before, 'wrapping moves pixels, it never creates or loses them');
+});
+
+test('drip slides column strips down', function () {
+  const w = 64, h = 32;
+  const src = imageOf(w, h, function (x, y) { return y === 0 ? [255, 255, 255] : [0, 0, 0]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'drip', amount: 100 }], 7);
+  let below = 0;
+  for (let x = 0; x < w; x++) {
+    for (let y = 1; y < h; y++) if (out[(y * w + x) * 4] > 0) below++;
+  }
+  assert.ok(below > 0, 'bright pixels land below the top row');
+});
+
+test('kaleidoscope 2-way and 4-way mirror the frame', function () {
+  const w = 32, h = 16;
+  const src = imageOf(w, h, function (x, y) { return [(x * 8) % 256, (y * 16) % 256, 40]; });
+  const two = src.slice();
+  D.applyGlitchStack(two, w, h, [{ id: 'kaleidoscope', amount: 60, mode: '2' }], 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = (y * w + x) * 4, b = (y * w + (w - 1 - x)) * 4;
+      assert.strictEqual(two[a], two[b], 'mirrored at x=' + x);
+      assert.strictEqual(two[a + 2], two[b + 2]);
+    }
+  }
+  const four = src.slice();
+  D.applyGlitchStack(four, w, h, [{ id: 'kaleidoscope', amount: 60, mode: '4' }], 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = (y * w + x) * 4, b = ((h - 1 - y) * w + (w - 1 - x)) * 4;
+      assert.strictEqual(four[a], four[b], 'point mirrored at ' + x + ',' + y);
+    }
+  }
+});
+
+test('kaleidoscope 8-way keeps the frame and changes it', function () {
+  const w = 32, h = 32;
+  const src = imageOf(w, h, function (x, y) { return [(x * 8) % 256, (y * 8) % 256, 0]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'kaleidoscope', amount: 60, mode: '8' }], 3);
+  assert.ok(!sameBytes(out, src), 'the frame is rebuilt');
+  for (let i = 0; i < w * h; i++) {
+    assert.ok(out[i * 4] >= 0 && out[i * 4] <= 255);
+  }
+});
+
+test('dead pixels are stuck on an extreme', function () {
+  const w = 64, h = 64;
+  const src = imageOf(w, h, function () { return [128, 128, 128]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'deadpixels', amount: 100 }], 11);
+  let dead = 0;
+  for (let i = 0; i < w * h; i++) {
+    const v = out[i * 4];
+    if (v !== 128) {
+      assert.ok(v === 0 || v === 255, 'stuck value ' + v);
+      assert.strictEqual(out[i * 4 + 1], v);
+      dead++;
+    }
+  }
+  const frac = dead / (w * h);
+  assert.ok(frac > 0.005 && frac < 0.06, 'about two percent of pixels, got ' + (frac * 100).toFixed(2) + '%');
+});
+
+test('vignette darkens the corners more than the centre', function () {
+  const w = 32, h = 32;
+  const src = imageOf(w, h, function () { return [200, 200, 200]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'vignette', amount: 100 }], 1);
+  const centre = out[(16 * w + 16) * 4];
+  const corner = out[0];
+  assert.strictEqual(centre, 200, 'the middle is untouched');
+  assert.ok(corner < centre * 0.4, 'the corner is much darker (' + corner + ')');
+});
+
+test('crt warps the frame and blooms the bright parts', function () {
+  const w = 48, h = 48;
+  const src = imageOf(w, h, function (x, y) {
+    const dot = Math.abs(x - 24) < 3 && Math.abs(y - 24) < 3;
+    return dot ? [255, 255, 255] : [10, 10, 10];
+  });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'crt', amount: 80 }], 2);
+  let halo = 0;
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w, y = (i / w) | 0;
+    const near = Math.abs(x - 24) < 10 && Math.abs(y - 24) < 10;
+    if (near && out[i * 4] > 10 && out[i * 4] < 250) halo++;
+  }
+  assert.ok(halo > 20, 'bright light spills into the dark field (' + halo + ' pixels)');
+});
+
+test('grain colour mode separates the channels', function () {
+  const w = 32, h = 32;
+  const mono = imageOf(w, h, function () { return [120, 120, 120]; });
+  const colour = mono.slice();
+  D.applyGlitchStack(mono, w, h, [{ id: 'grain', amount: 80, mode: 'mono' }], 4);
+  D.applyGlitchStack(colour, w, h, [{ id: 'grain', amount: 80, mode: 'colour' }], 4);
+  let monoEqual = 0, colourEqual = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (mono[i * 4] === mono[i * 4 + 2]) monoEqual++;
+    if (colour[i * 4] === colour[i * 4 + 2]) colourEqual++;
+  }
+  assert.strictEqual(monoEqual, w * h, 'mono grain moves every channel together');
+  assert.ok(colourEqual < w * h * 0.5, 'colour grain does not');
+});
+
+test('pixel sort in column mode sorts vertically', function () {
+  const w = 4, h = 16;
+  const vals = [5, 200, 150, 100, 5, 250, 180, 120, 90, 5, 220, 110, 5, 230, 140, 5];
+  const src = imageOf(w, h, function (x, y) { return [vals[y], vals[y], vals[y]]; });
+  const out = src.slice();
+  D.applyGlitchStack(out, w, h, [{ id: 'pixelsort', amount: 100, mode: 'cols' }], 1);
+  function at(x, y) { return out[(y * w + x) * 4]; }
+  assert.deepStrictEqual([1, 2, 3].map(function (y) { return at(0, y); }), [100, 150, 200], 'first column run sorted');
+  assert.strictEqual(at(0, 0), 5, 'separators stay put');
+  assert.strictEqual(at(0, 15), 5);
+});
+
+test('new palettes carry the levels they promise', function () {
+  function levels(id) { return D.PALETTES.find(function (p) { return p.id === id; }).colors.length; }
+  assert.strictEqual(levels('gray-4'), 4);
+  assert.strictEqual(levels('gray-8'), 8);
+  assert.strictEqual(levels('gray-16'), 16);
+  assert.strictEqual(levels('ega'), 16);
+  assert.strictEqual(levels('msx'), 15);
+  assert.strictEqual(levels('apple2'), 6);
+  const gray16 = D.PALETTES.find(function (p) { return p.id === 'gray-16'; }).colors;
+  gray16.forEach(function (c) {
+    assert.strictEqual(c[0], c[1]);
+    assert.strictEqual(c[1], c[2]);
+  });
+  assert.deepStrictEqual(gray16[0], [0, 0, 0]);
+  assert.deepStrictEqual(gray16[15], [255, 255, 255]);
+  // Twenty-two palettes, every id unique.
+  const ids = new Set(D.PALETTES.map(function (p) { return p.id; }));
+  assert.strictEqual(ids.size, D.PALETTES.length);
+});
+
+/* ------------------------------------------------------------------ */
+/* 13. performance budget                                             */
 /* ------------------------------------------------------------------ */
 
 group('performance budget (1024×1024, pixel size 1)');
@@ -556,6 +1047,25 @@ test('ordered dithering with the glitch stack on a megapixel', function () {
     algorithm: 'bayer8', palette: 'c64', pixelSize: 1, seed: 1,
     glitches: [{ id: 'grain', amount: 30 }, { id: 'scanlines', amount: 25 }],
   }, 2000);
+});
+
+test('the polished mixing plan on a megapixel', function () {
+  budget('c64 yliluoma-polished', { algorithm: 'yliluoma-polished', palette: 'c64', pixelSize: 1, seed: 1 }, 4000);
+});
+
+test('the whole glitch stack on a megapixel', function () {
+  const settings = {
+    algorithm: 'bayer4', palette: 'c64', pixelSize: 1, seed: 1,
+    glitches: D.GLITCHES.map(function (g) { return { id: g.id, amount: 50 }; }),
+  };
+  budget('all 11 glitches', settings, 6000);
+});
+
+test('a cached blue-noise mask costs nothing to reuse', function () {
+  const t0 = Date.now();
+  D.blueNoiseRanks(32);
+  D.blueNoiseRanks(32);
+  assert.ok(Date.now() - t0 < 50, 'cache hits are instant');
 });
 
 /* ------------------------------------------------------------------ */
