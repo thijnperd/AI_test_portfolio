@@ -223,24 +223,24 @@ generous caps; watch the printed numbers for regressions).
 For browser-facing changes, use the shared harness from the repository root:
 
 ```bash
-bash tools/check.sh "dither studio/index.html" --expect canvas \
+bash tools/check.sh "dither studio web/index.html" --expect canvas \
   --wait 1200 --screenshot /tmp/dither.png \
   --eval "JSON.stringify(window.__dither.stats())"
 
 # palette membership, on the actual canvas
-bash tools/check.sh "dither studio/index.html" --eval \
+bash tools/check.sh "dither studio web/index.html" --eval \
   "window.__dither.setSetting('palette','gameboy'); window.__dither.canvasColors()"
 
 # a preset with a glitch stack, including effect modes
-bash tools/check.sh "dither studio/index.html" \
+bash tools/check.sh "dither studio web/index.html" \
   --eval "window.__dither.applyPreset('storm'); JSON.stringify(window.__dither.stats().glitches)"
 
 # text mode: the character grid the canvas is actually printing
-bash tools/check.sh "dither studio/index.html" \
+bash tools/check.sh "dither studio web/index.html" \
   --eval "window.__dither.setText(true,'ascii',10); JSON.stringify(window.__dither.textGrid().lines.slice(0,4))"
 
 # alpha: a synthetic transparent source, then the three modes
-bash tools/check.sh "dither studio/index.html" --eval "(async function(){ \
+bash tools/check.sh "dither studio web/index.html" --eval "(async function(){ \
   const d = window.__dither; \
   const c = document.createElement('canvas'); c.width = 240; c.height = 160; \
   const x = c.getContext('2d'); const g = x.createLinearGradient(0,0,240,0); \
@@ -258,14 +258,14 @@ real frames:
 
 ```bash
 # play, measure and record, all inside one eval (the harness accepts one)
-bash tools/check.sh "dither studio/index.html" --eval "(async function(){ \
+bash tools/check.sh "dither studio web/index.html" --eval "(async function(){ \
   const d = window.__dither; d.videoSynthetic(480, 320); d.videoPlay(); \
   await new Promise(r => setTimeout(r, 1500)); const played = d.videoStats(); \
   const rec = await d.videoRecord(1200); d.videoPause(); \
   return { frames: played.drawn, dropped: played.dropped, rec: rec }; })()"
 
 # the temporal rules, isolated on one clip frame (both modes, same picture)
-bash tools/check.sh "dither studio/index.html" --eval "(function(){ \
+bash tools/check.sh "dither studio web/index.html" --eval "(function(){ \
   const d = window.__dither; d.videoSynthetic(480, 320); \
   d.setSetting('algorithm','random-noise'); \
   d.videoTemporal('freeze'); d.videoTick(1, 4); const a = d.canvasSample(128); \
@@ -282,7 +282,7 @@ cover the rest.
 
 ```bash
 # stations, stack and update modes in one pass
-bash tools/check.sh "dither studio/index.html" --eval "(function(){ var d = window.__dither; \
+bash tools/check.sh "dither studio web/index.html" --eval "(function(){ var d = window.__dither; \
   d.addEffect('scanlines'); d.addEffect('grain'); d.moveEffect(1, -1); \
   var ink = document.getElementById('alpha-mode'); ink.value = 'keep'; \
   ink.dispatchEvent(new Event('change', { bubbles: true })); \

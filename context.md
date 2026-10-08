@@ -74,11 +74,11 @@ Paths in this index are relative to the repository root.
 | `wave function collapse/test.js` | Changing or debugging the solver (adjacency, entropy, propagation, backtracking, boundary rules); tests specify the expected behavior. |
 | `RobloxGame/(ai instructions).md` | Working anywhere in the Roblox Game design kit; it holds the rules that keep the prompts usable (originality constraints, anti-fabrication clauses, dated and sourced numbers) and the .md/.docx pairing rules. |
 | `RobloxGame/README.md` | Working in the Roblox Game design kit; it indexes which master prompt to use when, the order to use them in, and what was corrected in the folder. |
-| `dither studio/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation, plus how this folder pairs with the standalone app repository it is published as (`thijnperd/dither-studio`, git-ignored here under `dither-studio/`). |
-| `dither studio/SOURCES.md` | Adding or changing a feature, algorithm, palette or numeric table in Dither Studio; it records which published work or open-source tool each one came from, and the divergences we chose deliberately. |
-| `dither studio/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. The app repository carries the same rules as its `AGENTS.md`. |
-| `dither studio/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, temporal rules, pipeline); tests specify the expected behavior. |
-| `dither studio/video.js` | Working on Dither Studio's video mode (frame source, playback clock with frame dropping, working-size cap, WebM recording); it is browser-only and deliberately knows nothing about dithering. |
+| `dither studio web/README.md` | Working in Dither Studio; use it to understand the app, the algorithm/palette/glitch catalogues, controls, performance caps, and validation, plus how this folder pairs with the repository it is published as (`thijnperd/dither-studio`, git-ignored here under `dither-studio/`), which holds three builds from one engine: the frozen web demo (`demo/`, on GitHub Pages), this page in an app window (the repository root), and an Electron desktop app (`desktop/`, released as a Windows `.exe`). |
+| `dither studio web/SOURCES.md` | Adding or changing a feature, algorithm, palette or numeric table in Dither Studio; it records which published work or open-source tool each one came from, and the divergences we chose deliberately. |
+| `dither studio web/(ai instructions).md` | Working anywhere in the Dither Studio project; it holds the core invariants that must not be broken (seeded determinism, palette membership, RGB metric consistency, unclamped error, caps) and the steps for adding algorithms, palettes, glitches, and presets. The app repository carries the same rules as its `AGENTS.md`. |
+| `dither studio web/test.js` | Changing or debugging the dither core (matrices, masks, algorithms, palettes, adjustments, glitch stack, glow, temporal rules, pipeline); tests specify the expected behavior. |
+| `dither studio web/video.js` | Working on Dither Studio's video mode (frame source, playback clock with frame dropping, working-size cap, WebM recording); it is browser-only and deliberately knows nothing about dithering. |
 
 ## Skills
 
@@ -123,4 +123,4 @@ step. Today:
 
 | Project | Repository | Where the copy lives here |
 |---|---|---|
-| Dither Studio | [thijnperd/dither-studio](https://github.com/thijnperd/dither-studio) — the standalone app: launchers, manifest, generated icons, `GUIDE.md`, CI | `dither-studio/` (git-ignored; the portfolio copy is `dither studio/`) |
+| Dither Studio | [thijnperd/dither-studio](https://github.com/thijnperd/dither-studio) — three builds from one engine: the frozen web demo on Pages (`demo/`), the launcher app at the root, and the Electron desktop app in `desktop/` released as a Windows `.exe`; docs, generated icons and CI alongside | `dither-studio/` (git-ignored; the portfolio copy is `dither studio web/`) |

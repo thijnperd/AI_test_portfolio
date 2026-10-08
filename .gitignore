@@ -21,5 +21,5 @@ node_modules/
 # (https://github.com/thijnperd/dither-studio): the same app plus app-mode
 # launchers, an installable manifest, generated icons, a guide and CI. It is a
 # copy with its own git history, so it stays out of this repository — see
-# `dither studio/README.md` for the pairing rule.
+# `dither studio web/README.md` for the pairing rule.
 dither-studio/
