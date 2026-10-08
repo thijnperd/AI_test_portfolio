@@ -27,7 +27,9 @@ The desktop build is the one being developed: an Electron application with a
 frameless window that draws its own Photoshop-shaped chrome — a caption bar,
 eight menus holding the whole catalogue, an options bar, a tool rail, a tabbed
 document, a dock of ten collapsible panels and status lines — over the operating
-system's own open and save dialogs, with a startup animation and its own guide.
+system's own open and save dialogs, with a startup screen of its own — two hands
+reach across the dark, and the left one is dithered and glows as the window
+opens — and its own guide.
 Its
 [README](https://github.com/thijnperd/dither-studio/blob/main/desktop/README.md)
 covers running and building it.
