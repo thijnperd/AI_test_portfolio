@@ -1,0 +1,5 @@
+# AI-only working context, not part of the published web demo.
+# Put AI-assistant instructions and similar context files here and keep
+# them out of version control. If a file here must be committed, move
+# it back out of this folder (this folder is for ignored context only).
+.agents/
