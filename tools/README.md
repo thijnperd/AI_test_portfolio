@@ -41,9 +41,16 @@ node tools/browser-check.cjs <url-or-path> [options]
 | `--click <sel>` | click an element after load (repeatable) |
 | `--screenshot <file>` | save a PNG of the final state |
 | `--eval <js>` | evaluate JS in the page and print the result |
+| `--touch` | emulate a touch device: `pointer: coarse` and `hover: none` match, touch events fire |
+| `--dpr <n>` | device pixel ratio (default `1`; pair with `--touch` for a retina phone or iPad) |
 | `--headed` | show a real window (default: headless) |
 
 A local path is turned into a `file://` URL automatically.
+
+`--touch` matters for any layout that branches on the pointer, not the width:
+headless Chromium reports `pointer: fine`, so without it a phone-width check
+would exercise the desktop layout and pass while the touch styles were never
+loaded at all.
 
 ## `check.sh`
 
@@ -64,6 +71,14 @@ bash tools/check.sh "2048/index.html" \
 # start the horror game (any key begins) and capture the raycast frame
 bash tools/check.sh "analog horror raycaster/index.html" --press Enter \
   --expect canvas --wait 2500 --screenshot /tmp/hallway.png
+
+# a phone: coarse pointer, retina, and the touch-only pieces really match
+bash tools/check.sh "dither studio web/index.html" --size 390x844 --touch --dpr 3 \
+  --eval "matchMedia('(pointer: coarse)').matches" --screenshot /tmp/phone.png
+
+# an iPad, the other way up
+bash tools/check.sh "dither studio web/index.html" --size 1024x768 --touch --dpr 2 \
+  --screenshot /tmp/ipad.png
 ```
 
 ## Notes

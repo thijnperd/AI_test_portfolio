@@ -141,8 +141,31 @@ navigable:
    so all three modes work without special cases.
 5. **The rail scrolls, the stage does not shrink.** `body` is a fixed grid; the
    station list is the scroll container and the viewport bar is a fixed row of
-   the stage. Respect the 720px contraction (stage first, rail capped) rather
-   than redesigning the layout.
+   the stage.
+6. **The responsive layers contract, they do not redesign.** One stylesheet
+   carries them, in this order: every control a finger hits is grown inside
+   `@media (pointer: coarse)` (the iPad layer — sizing on the *pointer*, not the
+   width, or a tablet gets desktop targets); the rail widens a little for
+   `(min-width: 721px) and (max-width: 1180px)` on a coarse pointer; and under
+   720px — plus a short landscape window, whatever its width — the rail
+   collapses into the console bar. A new control belongs inside a station and
+   inherits all three; do not add a second layout for phones.
+7. **The console bar is scripted *and* styled, and the CSS is the source of
+   truth for where it exists.** `initConsole()` collapses the rail when the
+   stylesheet is showing the bar, and it asks by reading
+   `getComputedStyle(#console-toggle).display` rather than re-comparing a
+   breakpoint in JavaScript — a number in two files drifts, a computed style
+   cannot. Two traps came with it: a *hidden* rail measures as a pile of
+   zero-height groups at zero, which reads as "the last station", so `markJump`
+   only measures when `el.rail.clientHeight > 0` and re-measures when the bar
+   opens; and the bar's own summary comes from `STATION_NOTES` via
+   `syncConsoleNote()`, which reads a cached station id rather than measuring,
+   so a render never forces a layout.
+8. **The canvas owns touch gestures.** Under `(pointer: coarse)` the canvas is
+   `touch-action: none` and its pointer handlers do the work: one pointer pans,
+   two pinch through `PINCH_ZOOM` (a finer ladder than the buttons' `ZOOM_STEPS`,
+   so the readout still reads like a value a button could have produced). Native
+   scrolling or page zoom would otherwise fight the proof mid-gesture.
 
 ## Extending
 

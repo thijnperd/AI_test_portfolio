@@ -2,15 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- viewport-fit=cover lets the console reach into the notch and the home
+       indicator; the padding that keeps it clear of them is the safe-area part
+       of the responsive section in style.css. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Dither Studio — image dithering</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <aside class="panel">
+  <!-- data-console is the shell's own state: on a phone the console collapses
+       to the bar below and expands to the whole rail. Above 720px the attribute
+       is ignored, so the desktop console is untouched. -->
+  <aside class="panel" id="panel" data-console="open">
     <header class="rail-head">
       <h1 class="brand">Dither <span>Studio</span></h1>
       <p class="tagline">Offline dithering press — images, video, print</p>
+      <button class="console-toggle" id="console-toggle" type="button"
+              aria-expanded="true" aria-controls="rail">
+        <span class="console-toggle-label">Console</span>
+        <span class="console-toggle-note" id="console-toggle-note">Source</span>
+        <span class="caret" aria-hidden="true">▾</span>
+      </button>
     </header>
 
     <!-- Station chips: the rail is tall, so it is also a row of links. -->

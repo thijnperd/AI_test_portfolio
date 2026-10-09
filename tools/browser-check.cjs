@@ -17,6 +17,9 @@
  *   --click <selector>   click an element after load       (repeatable)
  *   --screenshot <file>  save a PNG of the final state
  *   --eval <js>          evaluate JS in the page, print the result
+ *   --touch              emulate a touch device: `pointer: coarse` and
+ *                        `hover: none` match and touch events fire
+ *   --dpr <n>            device pixel ratio (default 1; pair with --touch)
  *   --headed             show a real window (default: headless)
  *
  * Output: a JSON summary { url, title, expect, pressed, evals, errors, ok }.
@@ -58,6 +61,8 @@ const opts = {
   press: [],
   click: [],
   evalJs: null,
+  touch: false,
+  dpr: 1,
 };
 
 const argv = process.argv.slice(2);
@@ -83,6 +88,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--press') { opts.press.push(need(a, i)); i++; }
   else if (a === '--click') { opts.click.push(need(a, i)); i++; }
   else if (a === '--eval') { opts.evalJs = need(a, i); i++; }
+  else if (a === '--touch') { opts.touch = true; }
+  else if (a === '--dpr') { opts.dpr = Number(need(a, i)) || 1; i++; }
   else if (a === '--headed') { opts.headless = false; }
   else if (a === '--help' || a === '-h') {
     console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].replace('/*', '').replace(/^#!.*\n/, ''));
@@ -93,7 +100,8 @@ for (let i = 0; i < argv.length; i++) {
 
 if (!target) {
   console.error('usage: node tools/browser-check.cjs <url-or-path> [--wait ms] [--size WxH] ' +
-    '[--expect sel] [--press key] [--click sel] [--screenshot file] [--eval js] [--headed]');
+    '[--expect sel] [--press key] [--click sel] [--screenshot file] [--eval js] ' +
+    '[--touch] [--dpr n] [--headed]');
   process.exit(2);
 }
 
@@ -105,7 +113,15 @@ function toUrl(t) {
 (async function main() {
   const url = toUrl(target);
   const browser = await chromium.launch({ headless: opts.headless });
-  const page = await browser.newPage({ viewport: { width: opts.width, height: opts.height } });
+  // `--touch` is what makes a coarse-pointer layout testable at all: without
+  // it Chromium reports `pointer: fine`, so every `@media (pointer: coarse)`
+  // rule is dead and a mobile check would silently test the desktop layout.
+  const page = await browser.newPage({
+    viewport: { width: opts.width, height: opts.height },
+    hasTouch: opts.touch,
+    isMobile: opts.touch,
+    deviceScaleFactor: opts.dpr,
+  });
 
   const errors = [];
   page.on('console', function (m) { if (m.type() === 'error') errors.push('console: ' + m.text()); });
@@ -146,6 +162,8 @@ function toUrl(t) {
   const summary = {
     url: url,
     title: await page.title(),
+    touch: opts.touch,
+    dpr: opts.dpr,
     expect: opts.expect.map(function (s) { return { selector: s, found: missing.indexOf(s) === -1 }; }),
     pressed: opts.press,
     evals: evaluated,

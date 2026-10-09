@@ -32,6 +32,13 @@
 
 html, body { height: 100%; }
 
+/* Mobile Safari collapses its own toolbar, which makes 100% of the *short*
+   viewport clip the bottom bar on the way out. Ask for the dynamic viewport
+   where it exists; on a desktop the two are the same number. */
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; }
+}
+
 body {
   margin: 0;
   display: grid;
@@ -70,6 +77,47 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
+
+/* The console bar. On a phone the rail collapses to this one row, so it is off
+   by default and the phone layer below turns it on. Its note carries the open
+   station's own summary, which is what makes a collapsed bar worth reading. */
+.console-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.console-toggle-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.console-toggle-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel[data-console="closed"] .console-toggle .caret { transform: rotate(-90deg); }
 
 /* Section jump strip: the rail is long, so the stations are also a row of
    chips. Click scrolls the station open; the visible one is marked. */
@@ -568,22 +616,154 @@ input[type="color"]:focus-visible,
 
 ::selection { background: var(--accent); color: #0b0c10; }
 
-/* the panel scrolls; keep the bar honest on short windows */
+/* keep the bar honest on short windows */
 @media (max-height: 620px) {
   .tagline { display: none; }
 }
 
-/* contraction, not redesign (DESIGN.md) */
-@media (max-width: 720px) {
-  body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .stage { order: 1; }
-  .panel { order: 2; max-height: 45vh; border-right: none; border-top: 1px solid var(--line); }
-  .toolbar { flex-wrap: wrap; }
-  .viewport-bar { flex-wrap: wrap; }
+/* ==================================================================== */
+/* responsive: the same console, contracted (DESIGN.md)                   */
+/*                                                                        */
+/* Three layers, applied in the order they overlap:                       */
+/*   · pointer: coarse — a finger instead of a mouse. Bigger targets and   */
+/*     thumbs, no keyboard hints. This is the iPad (and phone) layer.      */
+/*   · the tablet range — the rail takes the width touch labels need.      */
+/*   · under 720px — the console collapses to its bar, the proof sheet     */
+/*     takes the lead, and opening the bar grows the rail in place.        */
+/* ==================================================================== */
+
+@media (pointer: coarse) {
+  /* Every control a finger has to hit, at a size a finger can hit. */
+  .btn,
+  select,
+  input[type="number"],
+  input[type="text"] { min-height: 38px; }
+
+  .btn { font-size: 13px; }
+  .btn-mini { min-height: 34px; }
+  .btn-step { height: 38px; font-size: 11px; }
+  .seg { height: 38px; }
+  .seg-btn { padding: 0 12px; }
+  input[type="color"] { width: 34px; height: 30px; }
+
+  .group-head { padding: 12px 2px; }
+  .jump-chip { padding: 6px 10px; font-size: 12px; }
+
+  /* A slider is a control, not a hairline: thicken the track and grow the
+     thumb, or it cannot be caught and dragged. */
+  input[type="range"] { height: 28px; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 4px; }
+  input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7px; }
+  input[type="range"]::-moz-range-track { height: 4px; }
+  input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
+
+  .check { min-height: 34px; font-size: 12.5px; }
+  .check input { width: 17px; height: 17px; }
+
+  .icon-btn { width: 30px; height: 30px; font-size: 12px; }
+  .stack-row { padding: 8px 9px 7px; }
+  .stack-row select { height: 32px; min-width: 96px; }
+
+  /* Double-tap is the browser's zoom, not ours. */
+  button, select, input, label, .jump-chip, .group-head { touch-action: manipulation; }
+
+  /* The keyboard hints are a lie on a device with no keyboard; the Compare
+     button and the toolbar carry the same verbs. */
+  .rail-hint { display: none; }
+
+  /* Installed to the home screen, the console runs full-bleed on a notched
+     iPad: keep the bottom bar clear of the home indicator. */
+  .viewport-bar { padding-bottom: calc(7px + env(safe-area-inset-bottom)); }
+
+  /* The canvas owns its gestures: one finger pans, two fingers pinch the
+     zoom ladder. Letting the browser have them instead would scroll the page
+     under the proof and zoom the whole console mid-gesture. */
+  #canvas { touch-action: none; }
+}
+
+/* iPad, both ways up: the rail carries touch labels, so it takes a little
+   more width than the desktop rail and the bars breathe. A short window is
+   excluded — it belongs to the phone layer above, whatever its width. */
+@media (min-width: 721px) and (max-width: 1180px) and (min-height: 521px) and (pointer: coarse) {
+  body { grid-template-columns: 272px minmax(0, 1fr); }
+  .rail-head { padding: 16px 16px 10px; }
+  .statusbar,
+  .toolbar,
+  .viewport-bar { padding-left: 16px; padding-right: 16px; }
+}
+
+/* Phones: the console collapses to its bar. The proof keeps the lead, and a
+   tap on the bar grows the rail in place — the stage shrinks, nothing is
+   covered up and nothing is a modal.
+
+   A phone on its side is wider than this but has no height to spare, so a
+   short coarse-pointer window takes the same treatment rather than sitting in
+   the tablet layout with the proof squeezed to a strip. */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
+  body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+
+  .panel {
+    order: 1;
+    grid-template-rows: auto auto auto auto;
+    padding-top: env(safe-area-inset-top);
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .stage { order: 2; }
+
+  .rail-head { padding: 11px 12px 10px; }
+  .brand { font-size: 17px; }
+  .tagline { display: none; }
+  .console-toggle { display: flex; }
+
+  /* Closed: the bar is all that is left. Open: the rail scrolls inside a
+     capped sheet, so the proof never disappears off the bottom. */
+  .panel[data-console="closed"] .jump,
+  .panel[data-console="closed"] .rail-scroll,
+  .panel[data-console="closed"] .rail-hint { display: none; }
+
+  .panel[data-console="open"] .rail-scroll { max-height: 46dvh; }
+
+  /* Ten stations in one row: the strip scrolls sideways instead of wrapping. */
+  .jump { flex-wrap: nowrap; overflow-x: auto; padding: 0 12px 10px; scrollbar-width: none; }
+  .jump::-webkit-scrollbar { display: none; }
+
+  /* The statusbar is the house signature, so it stays — as one scrollable
+     line rather than four stacked ones. */
+  .statusbar {
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 7px 12px;
+    overflow-x: auto;
+    font-size: 10.5px;
+    scrollbar-width: none;
+  }
+  .statusbar::-webkit-scrollbar { display: none; }
+  .statusbar > span { flex: 0 0 auto; }
+
+  .toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
+  .viewport-bar { flex-wrap: wrap; row-gap: 6px; padding: 7px 12px; }
+  .canvas-frame { padding: 12px; }
+}
+
+/* A short viewport gives the sheet more of itself, takes the last of the
+   padding out of the proof, and keeps the bar itself thin: on a landscape
+   phone every row of chrome is a row the proof does not get. */
+@media (max-height: 520px) {
+  .panel[data-console="open"] .rail-scroll { max-height: 62dvh; }
+  .canvas-frame { padding: 6px; }
+}
+
+@media (pointer: coarse) and (max-height: 520px) {
+  .rail-head { padding: 9px 12px 8px; }
+  .brand { font-size: 15px; }
+  .console-toggle { margin-top: 7px; padding: 7px 9px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .caret,
+  .console-toggle .caret,
   .jump-chip,
   .group-name,
   .btn,

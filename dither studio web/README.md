@@ -83,6 +83,18 @@ playback transport beside it once a video source is loaded. The status bar above
 the canvas stays the instrument readout: file, size, algorithm, palette, colour
 count, render time, status.
 
+### Phones and tablets
+
+It is the same console, contracted — there is no second interface to learn:
+
+| Screen | What changes |
+|---|---|
+| Any touch device | Every control grows to a finger (38px targets, an 18px slider thumb, thicker tracks), the keyboard hint line goes away, and the proof takes over its own gestures: one finger pans, two pinch to zoom. |
+| iPad, both ways up | The rail takes 272px so touch labels and controls have room, and the bars breathe. |
+| Phones (and any short landscape window) | The rail collapses into one **console bar** at the top: the brand, a Console button, and a live summary of the station in view (`Press · Floyd–Steinberg · B&W · 2c`). Tap it and the rail opens in place — the proof keeps the lead, nothing is covered by a modal. The chip strip becomes one sideways-scrolling row, the status bar one scrollable line, and the toolbar wraps to two. |
+
+A collapsed console remembers whether you left it open, and the safe-area insets are honoured when the app is installed to a home screen.
+
 ### Keys
 
 | Key | Action |
@@ -315,6 +327,22 @@ The repository ships a shared Playwright harness:
 ```bash
 bash tools/check.sh "dither studio web/index.html" --expect canvas \
   --eval "window.__dither.stats()" --screenshot /tmp/dither.png
+```
+
+A phone or tablet has to be checked as one: Chromium reports `pointer: fine`
+unless the harness is told otherwise, so without `--touch` a phone-width check
+exercises the *desktop* layout and passes while the touch rules never load.
+
+```bash
+# a phone: coarse pointer, retina, console collapsed onto the proof
+bash tools/check.sh "dither studio web/index.html" --size 390x844 --touch --dpr 3 \
+  --eval "document.getElementById('console-toggle-note').textContent" --screenshot /tmp/phone.png
+
+# the same phone with the console open, and an iPad the other way up
+bash tools/check.sh "dither studio web/index.html" --size 390x844 --touch --dpr 3 \
+  --click "#console-toggle" --screenshot /tmp/phone-open.png
+bash tools/check.sh "dither studio web/index.html" --size 1024x768 --touch --dpr 2 \
+  --screenshot /tmp/ipad.png
 ```
 
 The page exposes `window.__dither` for checks and experimentation: `stats()`,

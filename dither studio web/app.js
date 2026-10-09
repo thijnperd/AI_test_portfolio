@@ -9,6 +9,11 @@
  *   - the working image is capped at MAX_SOURCE on its longest side;
  *   - dragging a slider renders a half-resolution preview on the next frame;
  *   - the full-quality pass only runs when the control is released.
+ *
+ * The shell is responsive the house way — contraction, not a redesign: the
+ * stylesheet thins the rail for a coarse pointer, and under 720px the rail
+ * collapses into one bar whose state is held here (`initConsole`), while the
+ * canvas takes over pan and pinch itself.
  */
 
 (function () {
@@ -18,6 +23,9 @@
   const MAX_SOURCE = 1600;
   const PREVIEW_SCALE = 0.5;
   const ZOOM_STEPS = [1, 2, 3, 4, 6, 8];
+  // Pinch-zoom walks its own, finer ladder: a pinch is a continuous gesture,
+  // but the readout still has to say a value a button could have produced.
+  const PINCH_ZOOM = [0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
   const MONO_STACK = '"SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace';
 
   const $ = function (id) { return document.getElementById(id); };
@@ -69,6 +77,9 @@
     wrap: $('canvas-wrap'), canvas: $('canvas'),
     // rail navigation and the viewport bar
     rail: $('rail'), jump: $('jump'),
+    // the console bar: only the web build has one (the desktop shell draws its
+    // own chrome), so every use of these is guarded.
+    panel: $('panel'), consoleToggle: $('console-toggle'), consoleToggleNote: $('console-toggle-note'),
     quality: $('quality'), qualityNote: $('quality-note'),
     transport: $('transport'), videoReadout: $('video-readout'),
     noteSource: $('note-source'), notePress: $('note-press'), noteTone: $('note-tone'),
@@ -337,7 +348,10 @@
   // doubles as a position readout while scrolling.
   function markJump() {
     let current = jumpPinned || (GROUPS.length ? GROUPS[0].id : null);
-    if (!jumpPinned) {
+    // A collapsed console hides the rail, and a hidden rail measures as a pile
+    // of zero-height groups at zero — which would read as "the last station".
+    // Only trust the measurements when the rail is actually on screen.
+    if (!jumpPinned && el.rail.clientHeight > 0) {
       const railTop = el.rail.getBoundingClientRect().top + 30;
       GROUPS.forEach(function (g) {
         const group = groupEl(g.id);
@@ -347,6 +361,8 @@
     Array.prototype.forEach.call(el.jump.children, function (chip) {
       chip.setAttribute('aria-current', chip.getAttribute('data-target') === current ? 'true' : 'false');
     });
+    currentStationId = current;
+    syncConsoleNote();
   }
 
   function initGroups() {
@@ -363,6 +379,76 @@
           setGroup(g.id, !groupOpen(g.id));
         });
       }
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* the console bar (phones: the rail collapses into it)               */
+  /* ------------------------------------------------------------------ */
+
+  // Under 720px the rail collapses to one bar (see the responsive section of
+  // style.css). That state lives on #panel as data-console, the toggle is the
+  // only thing that changes it, and the bar reports on the station the rail is
+  // currently showing — so a collapsed console still says what is set.
+  const CONSOLE_STORE = 'dither-studio.console';
+
+  // Which station the bar is reporting on. markJump() keeps it current while it
+  // measures the rail, so reading it costs nothing: no layout at render time.
+  let currentStationId = GROUPS.length ? GROUPS[0].id : null;
+
+  const STATION_NOTES = {
+    source: el.noteSource, press: el.notePress, tone: el.noteTone, ink: el.noteInk,
+    detail: el.noteDetail, effects: el.noteEffects, glow: el.noteGlow,
+    motion: el.noteMotion, type: el.noteType, preset: el.notePreset,
+  };
+
+  function consoleIsOpen() {
+    return !el.panel || el.panel.getAttribute('data-console') !== 'closed';
+  }
+
+  // Does the console bar exist at this size? The stylesheet answers it — the
+  // toggle is shown by the same media query that collapses the rail — so the
+  // script and the CSS can never drift apart about where the phone layout
+  // begins. (A short landscape phone counts, whatever its width.)
+  function consoleLayered() {
+    return !!el.consoleToggle && window.getComputedStyle(el.consoleToggle).display !== 'none';
+  }
+
+  function setConsole(open, remember) {
+    if (!el.panel) return;
+    el.panel.setAttribute('data-console', open ? 'open' : 'closed');
+    if (el.consoleToggle) el.consoleToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (remember) {
+      try { window.localStorage.setItem(CONSOLE_STORE, open ? 'open' : 'closed'); }
+      catch (err) { /* private mode, file://, or storage disabled: not important */ }
+    }
+    // Opening puts the rail back on screen, so the station the bar reports on
+    // can finally be measured.
+    if (open) markJump();
+  }
+
+  function syncConsoleNote() {
+    if (!el.consoleToggleNote) return;
+    const group = GROUPS.find(function (g) { return g.id === currentStationId; });
+    const note = STATION_NOTES[currentStationId];
+    const value = note && note.textContent ? note.textContent : '';
+    const name = group ? group.name : 'Console';
+    el.consoleToggleNote.textContent = value ? name + ' · ' + value : name;
+  }
+
+  function initConsole() {
+    if (!el.consoleToggle) return;
+    // A phone opens on the proof, not on the rail — unless the user opened the
+    // console here before, in which case the bar remembers that.
+    let saved = null;
+    try { saved = window.localStorage.getItem(CONSOLE_STORE); } catch (err) { saved = null; }
+    setConsole(saved === null ? !consoleLayered() : saved === 'open', false);
+    el.consoleToggle.addEventListener('click', function () {
+      setConsole(!consoleIsOpen(), true);
+    });
+    // Growing past the breakpoint must never leave a collapsed bar behind it.
+    window.addEventListener('resize', function () {
+      if (!consoleLayered() && !consoleIsOpen()) setConsole(true, false);
     });
   }
 
@@ -384,6 +470,7 @@
     setNote(el.noteMotion, motionSummary());
     setNote(el.noteType, text.on ? text.ramp + ' · ' + text.size + 'px' : 'off');
     setNote(el.notePreset, PRESETS.length + ' recipes');
+    syncConsoleNote();
   }
 
   function setNote(node, value) {
@@ -1553,23 +1640,61 @@
 
     el.export.addEventListener('click', exportPNG);
 
-    // pan by dragging the canvas
+    // Drag the canvas to pan it; two fingers pinch it. The canvas owns these
+    // gestures (touch-action: none on a coarse pointer), so a pan never turns
+    // into a page scroll and a pinch never zooms the page behind it.
+    const pointers = new Map();
+    let pinchFrom = 0;
+    let pinchScale = 1;
+
+    function pointerSpread() {
+      const list = Array.from(pointers.values());
+      return Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+    }
+
+    function snapPinch(scale) {
+      return PINCH_ZOOM.reduce(function (best, step) {
+        return Math.abs(step - scale) < Math.abs(best - scale) ? step : best;
+      }, PINCH_ZOOM[0]);
+    }
+
+    function endPan() {
+      state.panning = null;
+      el.canvas.classList.remove('panning');
+    }
+
     el.canvas.addEventListener('pointerdown', function (e) {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { el.canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+      if (pointers.size === 2) {
+        endPan();
+        pinchFrom = pointerSpread();
+        pinchScale = effectiveScale();
+        return;
+      }
+      if (pointers.size > 2) return;
       if (el.canvas.width * effectiveScale() <= el.wrap.clientWidth + 1 &&
           el.canvas.height * effectiveScale() <= el.wrap.clientHeight + 1) return;
       state.panning = { x: e.clientX, y: e.clientY, left: el.wrap.scrollLeft, top: el.wrap.scrollTop };
       el.canvas.classList.add('panning');
-      try { el.canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
     });
     el.canvas.addEventListener('pointermove', function (e) {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size > 1) {
+        if (!pinchFrom) return;
+        const wanted = snapPinch(pinchScale * (pointerSpread() / pinchFrom));
+        if (state.zoom !== wanted) { state.zoom = wanted; applyZoom(); }
+        return;
+      }
       if (!state.panning) return;
       el.wrap.scrollLeft = state.panning.left - (e.clientX - state.panning.x);
       el.wrap.scrollTop = state.panning.top - (e.clientY - state.panning.y);
     });
     ['pointerup', 'pointercancel'].forEach(function (type) {
-      el.canvas.addEventListener(type, function () {
-        state.panning = null;
-        el.canvas.classList.remove('panning');
+      el.canvas.addEventListener(type, function (e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinchFrom = 0;
+        if (!pointers.size) endPan();
       });
     });
 
@@ -1614,6 +1739,10 @@
     buildJump();
     initGroups();
     loadGroups();
+    initConsole();
+    // With no saved stations, nothing above has marked the strip yet, and the
+    // chip strip is also the position readout (and the console bar's subject).
+    markJump();
     setQuality(state.quality);
     syncUI();
     bindVideo();
