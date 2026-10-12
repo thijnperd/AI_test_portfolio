@@ -20,7 +20,7 @@ DOM-free engine.
 | Build | Where | State | How you get it |
 |---|---|---|---|
 | **Web demo** | `demo/` in the app repository | frozen | <https://thijnperd.github.io/dither-studio/> |
-| **Launcher app** | the repository root | frozen | the launchers: this page in an app-mode window with a profile of its own |
+| **Launcher app** | `launcher/` in the app repository | frozen | the launchers: this page in an app-mode window with a profile of its own |
 | **Desktop app** | `desktop/` | **active** | `Dither-Studio-Setup-<version>.exe` from [the latest release](https://github.com/thijnperd/dither-studio/releases/latest) |
 
 The desktop build is the one being developed: an Electron application with a
@@ -31,7 +31,7 @@ system's own open and save dialogs, with a startup screen of its own — two han
 reach across the dark, and the left one is dithered and glows as the window
 opens — and its own guide.
 Its
-[README](https://github.com/thijnperd/dither-studio/blob/main/desktop/README.md)
+[guide](https://github.com/thijnperd/dither-studio/blob/main/desktop/GUIDE.md)
 covers running and building it.
 
 This folder is the portfolio copy of the web build: same source, same tests, no
