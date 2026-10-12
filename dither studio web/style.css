@@ -1,13 +1,12 @@
-/* Dither Studio — instrument panel, print shop.
+/* Dither Studio - the console stylesheet.
  *
- * The world (DESIGN.md): "a dark instrument panel for a gallery at night".
- * This project's voice inside it: a *press console*. The chrome is a compact
- * rail of collapsible stations — Source, Press, Tone, Ink, Detail, Effects,
- * Motion, Type, Presets — and the proof sheet is the hero. Density and grouping
- * follow how professional dithering tools organise themselves (Dither Boy 6:
- * arrow-stepped algorithm browsing, an additive reorderable effects stack, and
- * a viewport-bottom Full/Live/Still update control); the tokens, the mono face
- * and the hairlines are the house's.
+ * House style (DESIGN.md): a dark instrument panel. The chrome is a compact
+ * rail of collapsible stations - Source, Press, Tone, Ink, Detail, Effects,
+ * Motion, Type, Presets - and the proof sheet is the hero. Density and
+ * grouping follow how professional dithering tools organise themselves
+ * (arrow-stepped algorithm browsing, an additive reorderable effects stack,
+ * a viewport-bottom Full/Live/Still update control); the tokens, the mono
+ * face and the hairlines are the house's own.
  */
 
 :root {
@@ -621,16 +620,14 @@ input[type="color"]:focus-visible,
   .tagline { display: none; }
 }
 
-/* ==================================================================== */
+/* -------------------------------------------------------------------- */
 /* responsive: the same console, contracted (DESIGN.md)                   */
 /*                                                                        */
-/* Three layers, applied in the order they overlap:                       */
-/*   · pointer: coarse — a finger instead of a mouse. Bigger targets and   */
-/*     thumbs, no keyboard hints. This is the iPad (and phone) layer.      */
-/*   · the tablet range — the rail takes the width touch labels need.      */
-/*   · under 720px — the console collapses to its bar, the proof sheet     */
-/*     takes the lead, and opening the bar grows the rail in place.        */
-/* ==================================================================== */
+/* Three layers, in the order they overlap:                               */
+/*   - pointer: coarse: bigger targets and thumbs (the iPad/phone layer). */
+/*   - the tablet range: the rail takes the width touch labels need.      */
+/*   - under 720px: the console collapses to its bar and the proof leads.  */
+/* -------------------------------------------------------------------- */
 
 @media (pointer: coarse) {
   /* Every control a finger has to hit, at a size a finger can hit. */
@@ -683,7 +680,7 @@ input[type="color"]:focus-visible,
 
 /* iPad, both ways up: the rail carries touch labels, so it takes a little
    more width than the desktop rail and the bars breathe. A short window is
-   excluded — it belongs to the phone layer above, whatever its width. */
+   excluded: it belongs to the phone layer above, whatever its width. */
 @media (min-width: 721px) and (max-width: 1180px) and (min-height: 521px) and (pointer: coarse) {
   body { grid-template-columns: 272px minmax(0, 1fr); }
   .rail-head { padding: 16px 16px 10px; }
@@ -693,12 +690,10 @@ input[type="color"]:focus-visible,
 }
 
 /* Phones: the console collapses to its bar. The proof keeps the lead, and a
-   tap on the bar grows the rail in place — the stage shrinks, nothing is
-   covered up and nothing is a modal.
-
-   A phone on its side is wider than this but has no height to spare, so a
-   short coarse-pointer window takes the same treatment rather than sitting in
-   the tablet layout with the proof squeezed to a strip. */
+         tap on the bar grows the rail in place - the stage shrinks, nothing is
+         covered up and nothing is a modal. A phone on its side is wider than
+         this but has no height to spare, so a short coarse-pointer window
+         takes the same treatment rather than sitting in the tablet layout. */
 @media (max-width: 720px), (pointer: coarse) and (max-height: 520px) {
   body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 
@@ -729,7 +724,7 @@ input[type="color"]:focus-visible,
   .jump { flex-wrap: nowrap; overflow-x: auto; padding: 0 12px 10px; scrollbar-width: none; }
   .jump::-webkit-scrollbar { display: none; }
 
-  /* The statusbar is the house signature, so it stays — as one scrollable
+  /* The statusbar is the house signature, so it stays: as one scrollable
      line rather than four stacked ones. */
   .statusbar {
     flex-wrap: nowrap;

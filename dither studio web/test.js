@@ -1,4 +1,4 @@
-/* test.js — Node tests for Dither Studio's core (dither.js).
+/* test.js: Node tests for Dither Studio's core (dither.js).
  *
  * The core is DOM-free on purpose, so the rules can be pinned here: matrices
  * and generated screens, mask generation, the palette quantizer, every dither
@@ -32,9 +32,7 @@ function group(name) {
   console.log('\n' + name);
 }
 
-/* ------------------------------------------------------------------ */
-/* helpers                                                            */
-/* ------------------------------------------------------------------ */
+// ---- helpers ----
 
 // Build an RGBA source from a (x, y) -> [r, g, b] function.
 function makeSource(w, h, fn) {
@@ -87,9 +85,7 @@ function nearestByDefinition(colors, r, g, b) {
   return best;
 }
 
-/* ------------------------------------------------------------------ */
-/* 1. ordered matrices                                                */
-/* ------------------------------------------------------------------ */
+// ---- 1. ordered matrices ----
 
 group('ordered matrices');
 
@@ -186,9 +182,7 @@ test('generated screens are deterministic across calls', function () {
   assert.ok(!sameBytes(D.spiralRanks(8, 1), D.spiralRanks(8, 4)));
 });
 
-/* ------------------------------------------------------------------ */
-/* 2. generated masks                                                 */
-/* ------------------------------------------------------------------ */
+// ---- 2. generated masks ----
 
 group('generated masks (void-and-cluster)');
 
@@ -244,9 +238,7 @@ test('blue-noise values are deterministic, bounded, and seed-sensitive', functio
   assert.ok(moved, 'seeds produce different masks');
 });
 
-/* ------------------------------------------------------------------ */
-/* 3. colour                                                          */
-/* ------------------------------------------------------------------ */
+// ---- 3. colour ----
 
 group('palette quantizer');
 
@@ -267,9 +259,7 @@ test('the palette lookup table agrees with nearest-by-definition at bucket centr
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 4. mono dithering                                                  */
-/* ------------------------------------------------------------------ */
+// ---- 4. mono dithering ----
 
 group('mono dithering');
 
@@ -369,9 +359,7 @@ test('serpentine sweeps change the pattern without breaking tone', function () {
   assert.ok(Math.abs(whiteFraction(snake) - 90 / 255) < 0.06, 'tone is still reproduced');
 });
 
-/* ------------------------------------------------------------------ */
-/* 5. palette dithering                                               */
-/* ------------------------------------------------------------------ */
+// ---- 5. palette dithering ----
 
 group('palette dithering');
 
@@ -405,9 +393,7 @@ test('palette error diffusion preserves the average tone of a flat patch', funct
   assert.ok(uniqueColors(res).size >= 2, 'a flat patch dithers between at least two palette colours');
 });
 
-/* ------------------------------------------------------------------ */
-/* 6. determinism                                                     */
-/* ------------------------------------------------------------------ */
+// ---- 6. determinism ----
 
 group('determinism');
 
@@ -439,9 +425,7 @@ test('process is deterministic for every algorithm', function () {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 7. scaling and the pipeline                                        */
-/* ------------------------------------------------------------------ */
+// ---- 7. scaling and the pipeline ----
 
 group('pipeline');
 
@@ -491,9 +475,7 @@ test('settings merge clamps and rejects nonsense', function () {
   assert.strictEqual(d.pixelSize, D.DEFAULTS.pixelSize);
 });
 
-/* ------------------------------------------------------------------ */
-/* 8. adjustments                                                     */
-/* ------------------------------------------------------------------ */
+// ---- 8. adjustments ----
 
 group('adjustments');
 
@@ -547,9 +529,7 @@ test('denoise removes isolated speckles', function () {
   assert.strictEqual(f[centre], 100, 'the speckle is replaced by the local median');
 });
 
-/* ------------------------------------------------------------------ */
-/* 9. glitch stack and glow                                           */
-/* ------------------------------------------------------------------ */
+// ---- 9. glitch stack and glow ----
 
 group('glitch stack and glow');
 
@@ -621,9 +601,7 @@ test('colour counting sees the dither stage, not the glow', function () {
   assert.ok(grey.colors <= 4);
 });
 
-/* ------------------------------------------------------------------ */
-/* 10. Yliluoma mixing plans                                          */
-/* ------------------------------------------------------------------ */
+// ---- 10. Yliluoma mixing plans ----
 
 group('Yliluoma mixing plans');
 
@@ -682,7 +660,7 @@ test('the plan error falls as the search gets smarter', function () {
 
 test('a flat patch under a mixing plan averages out to the target colour', function () {
   // The 8×8 screen is a permutation, so every plan entry lands the same number
-  // of times and the patch mean is the plan mean — a genuine tone match.
+  // of times and the patch mean is the plan mean: a genuine tone match.
   [[64, 64, 64], [128, 128, 128], [192, 176, 150]].forEach(function (target) {
     const src = makeSource(32, 32, function () { return target; });
     const res = D.process(src, { algorithm: 'yliluoma-polished', palette: 'c64', pixelSize: 1, seed: 1 });
@@ -726,9 +704,7 @@ test('mono Yliluoma mixing still prints black and white only', function () {
   });
 });
 
-/* ------------------------------------------------------------------ */
-/* 11. structure-aware screens                                        */
-/* ------------------------------------------------------------------ */
+// ---- 11. structure-aware screens ----
 
 group('structure-aware screens');
 
@@ -847,9 +823,7 @@ test('screenShift slides tile screens and is clamped by the merge', function () 
   assert.strictEqual(D.mergeSettings({ screen: { flow: -3 } }).screen.flow, 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* 12. ripple, starfield and the ink palettes                         */
-/* ------------------------------------------------------------------ */
+// ---- 12. ripple, starfield and the ink palettes ----
 
 group('ripple, starfield and inks');
 
@@ -909,9 +883,7 @@ test('the new inks carry the levels they promise', function () {
   assert.strictEqual(D.ALGORITHMS.length, 46);
 });
 
-/* ------------------------------------------------------------------ */
-/* 13. tone maps and alpha                                            */
-/* ------------------------------------------------------------------ */
+// ---- 13. tone maps and alpha ----
 
 group('tone maps and alpha');
 
@@ -1006,9 +978,7 @@ test('the alpha matte is averaged per chunk, not per pixel', function () {
   for (let i = 0; i < 16; i++) assert.strictEqual(res.data[i * 4 + 3], 128, 'chunk average at ' + i);
 });
 
-/* ------------------------------------------------------------------ */
-/* 14. the wider glitch stack                                         */
-/* ------------------------------------------------------------------ */
+// ---- 14. the wider glitch stack ----
 
 group('wider glitch stack');
 
@@ -1194,9 +1164,7 @@ test('new palettes carry the levels they promise', function () {
   assert.strictEqual(ids.size, D.PALETTES.length);
 });
 
-/* ------------------------------------------------------------------ */
-/* 15. video: the temporal rules                                      */
-/* ------------------------------------------------------------------ */
+// ---- 15. video: the temporal rules ----
 
 group('video temporal rules');
 
@@ -1265,9 +1233,7 @@ test('shimmer redraws a noisy screen but keeps the tone', function () {
   assert.ok(Math.abs(darkA - darkB) < w * h * 0.02, 'the tone holds: ' + darkA + ' vs ' + darkB);
 });
 
-/* ------------------------------------------------------------------ */
-/* 16. performance budget                                             */
-/* ------------------------------------------------------------------ */
+// ---- 16. performance budget ----
 
 group('performance budget (1024×1024, pixel size 1)');
 
@@ -1337,7 +1303,6 @@ test('a cached blue-noise mask costs nothing to reuse', function () {
   assert.ok(Date.now() - t0 < 50, 'cache hits are instant');
 });
 
-/* ------------------------------------------------------------------ */
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exitCode = 1;

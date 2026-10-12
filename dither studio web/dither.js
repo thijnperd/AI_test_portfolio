@@ -1,17 +1,14 @@
-/* dither.js — the DOM-free dithering core for Dither Studio.
+/* dither.js - the DOM-free dithering core.
  *
- * World: "instrument panel, print shop" — the canvas is a proof sheet; this
- * file is the press. Everything here runs in the browser (as `DitherLib`) and
- * in Node (`module.exports`) so the rules can be tested with `node test.js`.
+ * Runs in the browser as `DitherLib` and in Node via `module.exports`, so the
+ * rules can be tested with `node test.js`.
  *
- * The pipeline, in order:
- *
- *   RGBA source ──▶ adjustments ──▶ pixel-size downscale ──▶ dither
- *        ──▶ glitch stack ──▶ glow ──▶ NEAREST upscale ──▶ RGBA result
+ * Pipeline: RGBA source -> adjustments -> pixel-size downscale -> dither
+ *        -> glitch stack -> glow -> NEAREST upscale -> RGBA result
  *
  * Determinism is a contract: every random decision flows through
- * makeRng(seed). The generated masks (void-and-cluster, blue noise) use fixed
- * internal seeds, so the same settings always produce the same pixels.
+ * makeRng(seed), and the generated masks use fixed internal seeds, so the
+ * same settings always produce the same pixels.
  *
  * Dithering rules (mono path), with `v` the luma after the threshold bias:
  *   ordered / noise / blue-noise:  white when  v > mask        (mask 0..255)
@@ -22,19 +19,17 @@
  * distance (through a 32³ quantised lookup table so a slider drag stays
  * responsive), then either jitter the pixel by the mask before snapping
  * (ordered/stochastic) or diffuse the RGB error (error-diffusion kernels).
- * The distance metric matches the space the error travels in on purpose:
- * that is what makes a flat patch dither to its own average instead of
- * collapsing to the single nearest colour.
+ * The distance metric matches the space the error travels in: that is what
+ * makes a flat patch dither to its own average instead of collapsing to the
+ * single nearest colour.
  */
 
 (function (global) {
   'use strict';
 
-  /* ------------------------------------------------------------------ */
-  /* seeded randomness                                                  */
-  /* ------------------------------------------------------------------ */
+  // ---- seeded randomness ----
 
-  // mulberry32 — small, fast, and reproducible from a 32-bit seed.
+  // mulberry32: small, fast, and reproducible from a 32-bit seed.
   function makeRng(seed) {
     let s = (seed >>> 0) || 1;
     return function () {
@@ -56,9 +51,7 @@
     return x >>> 0;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* colour                                                             */
-  /* ------------------------------------------------------------------ */
+  // ---- colour ----
 
   function luma(r, g, b) {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -68,8 +61,8 @@
     return v < 0 ? 0 : v > 255 ? 255 : v;
   }
 
-  // sRGB → linear-light lookup, for blends that should add light rather than
-  // numbers (the glow). 256 entries, built once.
+  // sRGB -> linear-light lookup for blends that should add light (the glow).
+  // 256 entries, built once.
   const SRGB_TO_LINEAR = (function () {
     const t = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
@@ -84,7 +77,7 @@
     return clamp255(Math.round(c * 255));
   }
 
-  /* --- procedural masks ----------------------------------------------- */
+  // ---- procedural masks ----
 
   // Stable hash of a pixel coordinate and the user seed, in 0..1.
   function hash01(x, y, seed) {
@@ -103,7 +96,7 @@
     return (top + (bot - top) * sy) * 255;
   }
 
-  // Interleaved gradient noise (Jimenez 2013) — cheap film-grain masks.
+  // Interleaved gradient noise (Jimenez 2013): cheap film-grain masks.
   function ignValue(x, y) {
     const v = 0.06711056 * x + 0.00583715 * y;
     const f = v - Math.floor(v);
@@ -111,7 +104,7 @@
     return (g - Math.floor(g)) * 255;
   }
 
-  // R2 low-discrepancy sequence (Roberts 2018) — even coverage, no tiling.
+  // R2 low-discrepancy sequence (Roberts 2018): even coverage, no tiling.
   function r2Value(x, y) {
     const v = 0.7548776662466927 * x + 0.5698402909980532 * y;
     return (v - Math.floor(v)) * 255;
@@ -124,9 +117,7 @@
     return (a + b) * 0.5;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* ordered-dither matrices                                            */
-  /* ------------------------------------------------------------------ */
+  // ---- ordered-dither matrices ----
 
   // Bayer ranks via the recursive construction; values are 0..n²-1.
   function bayerRanks(n) {
@@ -173,7 +164,7 @@
     return out;
   }
 
-  /* --- void-and-cluster (Ulichney) ------------------------------------ */
+  // ---- void-and-cluster (Ulichney) ----
 
   // Returns a size×size permutation of 0..size²-1: the classic ordered mask.
   function voidAndCluster(size, seed) {
@@ -230,14 +221,14 @@
     }
 
     const ranks = new Uint16Array(n);
-    // Phase 1 — remove tightest clusters, ranking downward.
+    // Phase 1: remove tightest clusters, ranking downward.
     const relaxed = binary.slice();
     for (let r = ones - 1; r >= 0; r--) {
       const hi = tightestCluster();
       ranks[hi] = r;
       binary[hi] = 0; addAt(hi, -1);
     }
-    // Phase 2 — from the relaxed pattern, fill largest voids, ranking upward.
+    // Phase 2: from the relaxed pattern, fill largest voids, ranking upward.
     binary.set(relaxed);
     energy.fill(0);
     for (let i = 0; i < n; i++) if (binary[i]) addAt(i, 1);
@@ -256,9 +247,8 @@
     return voidClusterCache;
   }
 
-  // Two masks: the 16×16 builds in a few milliseconds and is used by default;
-  // the 64×64 is the real article (no visible tiling) and is generated lazily
-  // once, on first use, because it takes a few hundred milliseconds.
+  // Two masks: a 16×16 that builds in a few milliseconds (the default), and
+  // the 64×64 (no visible tiling), generated lazily on first use.
   const BLUE_NOISE_SEED = 0x51e2d7;
   const BLUE_NOISE_CACHE = new Map();
   function blueNoiseRanks(size) {
@@ -286,7 +276,7 @@
     return mask[((ly + oy) & (s - 1)) * s + ((lx + ox) & (s - 1))] * (255 / (s * s - 1));
   }
 
-  /* --- generated screens ---------------------------------------------- */
+  // ---- generated screens ----
 
   // Order the cells of a size×size tile by a key and hand back the ranks.
   function rankedTile(size, keyFn) {
@@ -301,8 +291,7 @@
   }
 
   // Clustered dot: cells fill outward from the tile centre, so dots grow as
-  // round blobs the way a real contact screen's do. The tiny angular term
-  // breaks radius ties so the first dots grow evenly in every direction.
+  // round blobs; a tiny angular term breaks radius ties.
   function clusteredDotRanks(size) {
     const c = (size - 1) / 2;
     return rankedTile(size, function (x, y) {
@@ -323,8 +312,7 @@
     });
   }
 
-  // Line screens: whole lines thicken in step, so the screen reads as ruled
-  // paper rather than dots.
+  // Line screens: whole lines thicken in step, so the screen reads as ruled paper.
   function lineRanks(size, vertical) {
     return rankedTile(size, function (x, y) {
       const along = vertical ? y : x;
@@ -369,9 +357,7 @@
     return mat;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* palettes                                                           */
-  /* ------------------------------------------------------------------ */
+  // ---- palettes ----
 
   // Values are the hardware / product palettes they name; B&W is the mono path.
   const PALETTES = [
@@ -471,9 +457,7 @@
     return lut[q];
   }
 
-  /* ------------------------------------------------------------------ */
-  /* adjustments                                                        */
-  /* ------------------------------------------------------------------ */
+  // ---- adjustments ----
 
   // f is an interleaved Float32 RGB buffer, w*h*3 values in 0..255.
   function applyAdjustments(f, w, h, rawAdj) {
@@ -486,8 +470,8 @@
     const black = adj.black === undefined ? 0 : adj.black;
     const white = adj.white === undefined ? 255 : adj.white;
     const gamma = adj.gamma === undefined ? 1 : adj.gamma;
-    // Input levels first, then gamma: both are input-side, so a render with the
-    // defaults is untouched by them.
+    // Input levels first, then gamma: both are input-side, so a render with
+    // the defaults is untouched by them.
     if (black > 0 || white < 255) {
       const span = Math.max(1, white - black);
       for (let i = 0; i < n; i++) f[i] = ((f[i] - black) / span) * 255;
@@ -539,10 +523,10 @@
     return f;
   }
 
-  /* --- tone maps (duotone grades) ------------------------------------- */
+  // ---- tone maps (duotone grades) ----
 
-  // A tone map sends black to one ink and white to the other, so it survives
-  // dithering: a 1-bit dither stays two inks, a palette gets tinted.
+  // A tone map sends black to one ink and white to the other, so a 1-bit
+  // dither stays exactly two inks.
   const TONE_MAPS = [
     { id: 'none', name: 'None' },
     { id: 'gray', name: 'Grayscale', ink: [0, 0, 0], paper: [255, 255, 255] },
@@ -620,7 +604,7 @@
     return v < lo ? lo : v > hi ? hi : v;
   }
 
-  // 3×3 median per channel — the denoise option (off by default; the most
+  // 3×3 median per channel: the denoise option (off by default; the most
   // expensive adjustment).
   function median3RGB(f, w, h) {
     const src = f.slice();
@@ -648,11 +632,9 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* scaling                                                            */
-  /* ------------------------------------------------------------------ */
+  // ---- scaling ----
 
-  // Box-average downscale to (round(w/ps), round(h/ps)) — the pixel chunk.
+  // Box-average downscale to (round(w/ps), round(h/ps)): the pixel chunk.
   function downscale(f, w, h, ps) {
     const sw = Math.max(1, Math.round(w / ps));
     const sh = Math.max(1, Math.round(h / ps));
@@ -706,9 +688,7 @@
     return out;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* algorithms                                                         */
-  /* ------------------------------------------------------------------ */
+  // ---- algorithms ----
 
   const ALGORITHMS = [
     { id: 'threshold', name: 'Threshold (no dither)', group: 'Basic', kind: 'threshold' },
@@ -790,16 +770,13 @@
     7, 0, 4, 11, 21, 0, 10, 31, 13, 0, 5, 18, 13, 0, 5, 18,
   ]);
 
-  /* --- masks ---------------------------------------------------------- */
+  // ---- masks ----
 
-  // The threshold mask for one pixel, 0..255. Ordered screens read their tile,
-  // stochastic screens roll their own: white noise from the seeded RNG (the
-  // order of calls is the pixel order, so it stays reproducible), blue noise
-  // from the tiled void-and-cluster mask, clustered noise from a value-noise
-  // field, formulas from their closed form.
-  // `i` is the pixel index into the screen (structure screens are prebuilt),
-  // and `screenShift` slides tile-based screens by whole pixels — that is what
-  // makes an ordered screen crawl during video playback.
+  // The threshold mask for one pixel, 0..255. Ordered screens read their
+  // tile; stochastic screens roll their own (seeded white noise, the tiled
+  // void-and-cluster mask, a value-noise field, or a closed-form formula).
+  // `i` indexes the screen, and `screenShift` slides tile-based screens by
+  // whole pixels, which is what makes an ordered screen crawl in video.
   function maskValue(algo, x, y, i, settings, rng, mat, m, screen) {
     const sy = settings.screenShift | 0;
     const px = x + sy, py = y + sy;
@@ -817,18 +794,13 @@
     }
   }
 
-  /* --- structure-aware screens ---------------------------------------- */
+  // ---- structure-aware screens ----
 
-  // These screens read the image instead of just tiling over it. The base noise
-  // is stretched along the image's own contours — the tangent of the iso-luma
-  // direction, sampled either side of each pixel, a short line-integral
-  // convolution — so dots flow with the shading rather than fighting it. Two
-  // more knobs push it around: vertical streaks (rain) and an edge bias that
-  // opens the screen up at edges while flats stay clean (a subject made of
-  // dots). Each mode sets its own character; the sliders push it.
-  //
-  // Cost is bounded: one noise field per render, then a fixed number of nearest
-  // samples per pixel (at most 1 + 2*10 + 2*10), no per-pixel allocation.
+  // These screens read the image instead of tiling over it: the base noise is
+  // stretched along the image's iso-luma contours (a short line-integral
+  // convolution along the gradient's tangent) and biased towards edges, so the
+  // screen follows the shading instead of fighting it. Cost is bounded: one
+  // noise field per render, a fixed sample budget per pixel, no allocation.
   const SCREEN_EDGE_REF = 26;   // gradient magnitude that counts as an edge
   const SCREEN_CELL_MIN = 1;
   const SCREEN_CELL_MAX = 12;
@@ -846,7 +818,7 @@
     const seed = settings.seed >>> 0;
 
     // Two octaves of value noise: clumps at the cell size plus a third-size
-    // detail octave, which is what keeps the pattern from looking like blobs.
+    // detail octave.
     const field = new Float32Array(n);
     const detail = Math.max(1, Math.round(cell / 3));
     for (let y = 0; y < h; y++) {
@@ -862,9 +834,8 @@
       lumaIn[i] = luma(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]) / 255;
     }
 
-    // Samples are read straight out of `field` with the index arithmetic
-    // inlined: this loop runs 10+ times per pixel, and a closure call per
-    // sample was most of the screen's cost.
+      // Index arithmetic is inlined: this loop runs 10+ times per pixel, and
+      // a closure call per sample was most of the screen's cost.
     const maxX = w - 1, maxY = h - 1;
     function sampleAt(fx, fy) {
       let x = (fx + 0.5) | 0;
@@ -875,11 +846,10 @@
     }
 
     const out = new Float32Array(n);
-    // Samples per pixel are bounded by a budget, not just by the sliders: a
-    // 1600 px working image would otherwise cost 41 neighbour samples for every
-    // one of its pixels. Six million samples is about 100 ms of work here. The
-    // two reaches shrink together, so the look keeps its proportions and only
-    // loses a little of its tail.
+        // Samples per pixel are bounded by a budget, not just the sliders: a
+        // 1600 px working image would otherwise cost 41 samples per pixel.
+        // Six million samples is about 100 ms of work here. The two reaches
+        // shrink together, so the look keeps its proportions.
     const budget = 6e6 / Math.max(1, n);
     const wantFlow = 1 + Math.round(flowAmt * 9);
     const wantStreak = 1 + Math.round(streakAmt * 9);
@@ -919,13 +889,11 @@
           v = v * (1 - streakAmt) + (sum / count) * streakAmt;
         }
         const edge = Math.min(1, mag / SCREEN_EDGE_REF);
-        // Flats keep a calm screen; edges open it up. The dots mode goes much
-        // further: flats collapse towards a plain threshold, so the subject
-        // reads as dots on the edges and clean paper inside.
+        // Flats keep a calm screen; edges open it up. The dots mode goes
+        // further: flats collapse towards a plain threshold.
         const gain = mode === 'dots' ? 0.12 + 1.15 * edge : mode === 'rain' ? 0.7 + 0.6 * edge : 0.85 + 0.5 * edge;
-        // Held just inside the ends: a screen that reached 0 or 255 would make
-        // pure-black or pure-white patches flip once the strength knob pushed
-        // it, which is the one thing every other screen here guarantees.
+        // Held just inside the ends: a screen that reached 0 or 255 would
+        // make pure patches flip once the strength knob pushed it.
         const m = 128 + (v - 0.5) * 255 * gain;
         out[i] = m < 1 ? 1 : m > 254 ? 254 : m;
       }
@@ -956,16 +924,13 @@
     return out;
   }
 
-  /* --- Yliluoma mixing ------------------------------------------------ */
+  // ---- Yliluoma mixing ----
 
   // Yliluoma's ordered dithering (bisqwit, 2017). Instead of snapping to one
-  // colour per pixel, a *mixing plan* — a short sequence of palette entries —
-  // is built for each target, and the ordered-screen rank picks the entry. The
-  // plan is searched for, not derived: option 2 finds the best convex mix of
-  // two palette colours, option 3 grows the plan greedily (the plan metric is
-  // the sum of the squared distances between the target and every partial mean
-  // of the sorted plan, exactly as published), option 4 additionally prunes
-  // redundant entries from the finished plan.
+  // colour per pixel, a mixing plan - a short sequence of palette entries -
+  // is built for each target, and the ordered-screen rank picks the entry.
+  // Option 2 finds the best convex mix of two palette colours, option 3 grows
+  // the plan greedily, option 4 additionally prunes redundant entries.
   const YLL_STEPS = 16;          // plan length; the screen resolves 16 levels
   const YLL_MONO_LEVELS = 32;    // luma bins for the mono path
   const YLL_RGB_LEVELS = 16;     // per-channel bins for the colour path
@@ -997,39 +962,21 @@
     return entry;
   }
 
-  // The plan metric: the squared distance between the target and the running
-  // mean of the plan over every prefix, weighted by 1/k. The plan is applied
-  // left to right across the screen, so every prefix *is* a tone the tile shows
-  // — but an unweighted sum is dominated by the first entry and drives the
-  // search towards a single colour, so the later (visually dominant) prefixes
-  // carry proportionally more weight. The last prefix is the plan's mean, which
-  // is exactly what a full tile averages to.
   // The plan metric is the squared distance between the target and the plan's
-  // *mean* — the one thing a plan is really for. Every entry of a plan lands the
-  // same number of times across a screen tile, so the plan's mean is exactly
-  // what the tile renders to. (Yliluoma's published metric sums the error of
-  // every prefix of the sorted plan instead; implemented literally that sum is
-  // dominated by the first entry, which is whatever dark colour the plan holds,
-  // so the search drifts towards a single colour per target and the tile loses
-  // its tone — the opposite of the point.)
-  // The plan metric is the squared distance between the target and the plan's
-  // *mean*, which is the one thing a plan is really for: every entry of a plan
-  // lands the same number of times across a screen tile, so the plan's mean is
-  // exactly the tone the tile renders.
+  // mean: every entry of a plan lands the same number of times across a screen
+  // tile, so the plan's mean is exactly the tone the tile renders.
   //
-  // Yliluoma's published metric sums the error of every *prefix* of the sorted
+  // Yliluoma's published metric sums the error of every prefix of the sorted
   // plan instead. Implemented literally that sum is dominated by the darkest
-  // entry the plan holds — the first prefix — so the search drifts towards one
-  // colour per target and the tile loses its tone, which is the opposite of the
-  // point (measured: a flat 128 rendered at 207). Weighting the prefixes by 1/k
-  // softens but does not fix it. A cohesion term on top of the mean was also
-  // measured and dropped: it costs real tone accuracy (mean error 5.8 → 10.5
-  // across a target sweep) to buy a modest 30% reduction in entry spread.
+  // entry, the search drifts towards one colour per target and the tile loses
+  // its tone (measured: a flat 128 rendered at 207). Weighting the prefixes by
+  // 1/k softens but does not fix it. A cohesion term on top of the mean was
+  // measured and dropped (mean error 5.8 -> 10.5 over a target sweep).
   //
-  // The honest consequence: on a sparse, saturated palette a plan can mix
-  // colours that are individually far from the target, so mixing on a photo
-  // has a granular texture. That is the trade this family makes — pick a dense
-  // palette (a greyscale ramp) or the two-colour variant for a calmer screen.
+  // The trade: on a sparse, saturated palette a plan can mix colours that are
+  // individually far from the target, so mixing on a photo has a granular
+  // texture. Use a dense palette (a greyscale ramp) or the two-colour variant
+  // for a calmer screen.
   function planError(plan, colors, target) {
     let r = 0, g = 0, b = 0;
     for (let i = 0; i < plan.length; i++) {
@@ -1103,13 +1050,12 @@
     return plan;
   }
 
-  // Options 3/4: start from the best two-colour mix — an exhaustive search, so
-  // the plan can never come out worse than option 2 — then improve it slot by
-  // slot, trying every candidate colour in every slot and keeping what lowers
-  // the error. Option 3 does one sweep over the target's nearest colours;
-  // option 4 sweeps the whole palette three times, which is where its extra
-  // quality comes from. Sweeps only ever accept improvements, so each variant
-  // is bounded from above by the one before it.
+  // Options 3/4: start from the best two-colour mix - an exhaustive search, so
+  // the plan can never come out worse than option 2 - then improve it slot by
+  // slot, trying every candidate colour in every slot. Option 3 does one sweep
+  // over the target's nearest colours; option 4 sweeps the whole palette three
+  // times. Sweeps only accept improvements, so each variant is bounded from
+  // above by the one before it.
   function searchPlan(entry, target, polish) {
     const colors = entry.colors, lumas = entry.lumas;
     const sweeps = polish ? 3 : 1;
@@ -1157,7 +1103,7 @@
     return (r * YLL_STEPS) | 0;
   }
 
-  /* --- mono path ------------------------------------------------------ */
+  // ---- mono path ----
 
   // lumaIn: Float32Array (one per pixel). Returns Uint8ClampedArray of 0/255.
   function ditherMono(lumaIn, w, h, algo, settings, rng, screen) {
@@ -1285,7 +1231,7 @@
     }
   }
 
-  /* --- palette path --------------------------------------------------- */
+  // ---- palette path ----
 
   const ORDERED_JITTER = 0.3;  // mask amplitude for palette mode, in 0..255
   const LUT_BITS = 4;          // per-channel target bins for the mixing plans
@@ -1424,9 +1370,7 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* glitch stack (post-dither, at chunk resolution)                    */
-  /* ------------------------------------------------------------------ */
+  // ---- glitch stack (post-dither, at chunk resolution) ----
 
   const GLITCHES = [
     { id: 'aberration', name: 'Chromatic aberration', hint: 'splits the red and blue channels' },
@@ -1585,7 +1529,7 @@
     }
   }
 
-  // Sine displacement per row — the classic analogue-tape wobble.
+  // Sine displacement per row: the classic analogue-tape wobble.
   function glitchWave(d, w, h, amount, rng, mode) {
     const src = d.slice();
     const amp = Math.max(1, Math.round((amount / 100) * Math.min(w, h) * 0.06));
@@ -1721,9 +1665,8 @@
     }
   }
 
-  // Displacement: rings out from the centre, a vortex, or a noise field. Reading
-  // each destination from a displaced source is what lets a still melt the way
-  // an analogue tape eats a frame.
+  // Displacement: rings out from the centre, a vortex, or a noise field.
+  // Reading each destination from a displaced source lets a still melt.
   function glitchRipple(d, w, h, amount, rng, mode) {
     const src = d.slice();
     const k = amount / 100;
@@ -1759,8 +1702,7 @@
   }
 
   // Dust that glows: single bright pixels for the glow pass to bloom. In stars
-  // mode they only take over the dark, which is what puts a figure in a night
-  // sky instead of a snowstorm.
+  // mode they only take over the dark, so a figure reads in a night sky.
   function glitchStarfield(d, w, h, amount, rng, mode) {
     const density = (amount / 100) * (mode === 'dust' ? 0.006 : 0.002);
     const cells = w * h;
@@ -1791,9 +1733,7 @@
     starfield: glitchStarfield,
   };
 
-  /* ------------------------------------------------------------------ */
-  /* glow                                                               */
-  /* ------------------------------------------------------------------ */
+  // ---- glow ----
 
   function applyGlow(rgba, w, h, radius, intensity) {
     if (radius <= 0 || intensity <= 0) return rgba;
@@ -1810,7 +1750,7 @@
     for (let i = 0; i < w * h; i++) {
       for (let c = 0; c < 3; c++) {
         // Light adds in linear space, so a glow keeps its hue instead of
-        // drifting towards white as the two screens overlap.
+        // drifting towards white.
         const a = SRGB_TO_LINEAR[rgba[i * 4 + c]];
         const bi = clampInt(Math.round(glow[i * 3 + c]), 0, 255);
         rgba[i * 4 + c] = linearToSrgb255(a + SRGB_TO_LINEAR[bi] * k);
@@ -1819,11 +1759,9 @@
     return rgba;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* colour counting                                                    */
-  /* ------------------------------------------------------------------ */
+  // ---- colour counting ----
 
-  // 24-bit bitset (16 MB, reused) — bounded memory even for a 1600×1600 render.
+  // 24-bit bitset (16 MB, reused): bounded memory even for a 1600×1600 render.
   let colorBits = null;
   function countColorsRGB(rgb) {
     if (!colorBits) colorBits = new Uint8Array(1 << 24);
@@ -1838,9 +1776,7 @@
     return count;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* settings + pipeline                                                */
-  /* ------------------------------------------------------------------ */
+  // ---- settings + pipeline ----
 
   const ALPHA_MODES = ['matte', 'sharpen', 'keep'];
 
@@ -1919,16 +1855,16 @@
     return typeof v === 'number' && isFinite(v) ? v : fallback;
   }
 
-  // --- video: the temporal rules -------------------------------------------
-  // Playing a clip turns the seed into a time axis, and there are three honest
-  // ways to do that (the classic temporal-dither choices made explicit):
-  //   freeze  — one screen for the whole clip: the calm, stable look.
-  //   shimmer — a fresh seed per frame, so stochastic screens boil in place
-  //             while the overall tone holds (the palette's mixes average out).
-  //   crawl   — tile screens slide a pixel per frame, the classic ordered
-  //             "walking" screen (structure screens are rebuilt instead, and
-  //             ignore the shift).
-  // The stride is the golden-ratio hash constant, so consecutive frames land
+  // --- video: the temporal rules ---
+  // Playing a clip turns the seed into a time axis, with the three classic
+  // temporal-dither choices:
+  //   freeze  - one screen for the whole clip: the calm, stable look.
+  //   shimmer - a fresh seed per frame, so stochastic screens boil while the
+  //             overall tone holds.
+  //   crawl   - tile screens slide a pixel per frame; structure screens are
+  //             rebuilt instead and ignore the shift.
+  // The stride is the golden-ratio hash constant, so consecutive frames never
+  // fall into a short cycle.
   // far apart in the generator's stream and never fall into a short cycle.
   const TEMPORAL_MODES = ['freeze', 'shimmer', 'crawl'];
 
@@ -1938,7 +1874,7 @@
     if (mode === 'shimmer') {
       merged.seed = (merged.seed + Math.imul(index + 1, 0x9e3779b1)) >>> 0;
     } else if (mode === 'crawl') {
-      // The same bound mergeSettings applies, because this assignment happens
+      // The same bound mergeSettings applies, since this assignment happens
       // after that clamp rather than through it.
       merged.screenShift = clampInt(index, 0, 1000000);
     }
@@ -2004,8 +1940,8 @@
 
     const colors = countColorsRGB(rgb);
 
-    // Tone map sits between the press and the finishing: it re-inks the dither
-    // rather than grading the photo, so 1-bit stays exactly two inks.
+    // The tone map re-inks the dither rather than grading the photo, so 1-bit
+    // stays exactly two inks.
     if (settings.toneMap !== 'none') {
       const mapped = new Float32Array(dw * dh * 3);
       for (let i = 0; i < dw * dh * 3; i++) mapped[i] = rgb[i];
@@ -2067,7 +2003,6 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
 
   const DitherLib = {
     // constants

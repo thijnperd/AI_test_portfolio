@@ -1,15 +1,14 @@
-/* video.js — video mode for Dither Studio (browser only; not loaded by tests).
+/* video.js - video mode for Dither Studio (browser only, not loaded by tests).
  *
  * Owns the frame source (a video file, the webcam, or a synthetic clip used by
  * the browser checks), the playback clock, the temporal dithering rules and
- * WebM recording. It deliberately knows nothing about *how* a frame is
- * dithered: app.js hands in an `onFrame(imageData, frameIndex)` callback and
- * gets timing back.
+ * WebM recording. It knows nothing about *how* a frame is dithered: app.js
+ * hands in an `onFrame(imageData, frameIndex)` callback and gets timing back.
  *
- * Cost control (see DESIGN.md): the working frame is capped on its longest
- * side, the frame rate is capped, and a render that overruns its slot causes
- * frames to be *dropped* rather than queued. Playback can look choppy on a
- * heavy recipe; it never builds a backlog and never pegs a core.
+ * Cost control (see DESIGN.md): the working frame and the frame rate are
+ * capped, and a render that overruns its slot causes frames to be *dropped*
+ * rather than queued. Playback can look choppy on a heavy recipe; it never
+ * builds a backlog and never pegs a core.
  */
 (function (global) {
   'use strict';
@@ -137,7 +136,7 @@
       lastFrameMs = performance.now() - t0;
       if (typeof out === 'number') lastFrameMs = out;
       // Overrunning a slot means the next frames will be late; count them as
-      // dropped so the status bar tells the truth about playback smoothness.
+      // dropped so the status bar tells the truth about playback.
       if (lastFrameMs > interval) {
         dropped += Math.floor(lastFrameMs / interval);
       }
