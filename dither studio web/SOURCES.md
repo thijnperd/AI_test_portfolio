@@ -119,7 +119,7 @@ feature set navigable — not the paint.
 
 ## What is not from anywhere
 
-The press console itself — `index.html`, `style.css`, `app.js`, the demo scene,
+The press console itself — `index.html`, `style.css`, `app.js`,
 the text mode, the preset recipes, the glitch stack's implementation, the
 tone-map system, the alpha pipeline, the tests and this file — is original work
 for this repository, written against the visual language in

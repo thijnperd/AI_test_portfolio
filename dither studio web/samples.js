@@ -2,8 +2,8 @@
  *
  * Three paintings travel inside the app, so a fresh window has something with
  * some weight in it before anything is loaded: the Source panel's control (and
- * the Ctrl+D accelerator, and File > the demo scene) steps through these, then
- * the generated scene, and comes round again on the first.
+ * the Ctrl+D accelerator, and File > Built-in Source) steps through these, and
+ * comes round again on the first.
  *
  * They are inlined as data URIs rather than shipped as image files because the
  * console also runs from `file://` (the launchers, and any browser opening
@@ -18,8 +18,8 @@
  * DEVELOPMENT.md says how to regenerate the table.
  *
  * Exposes: window.DitherSamples - [{ name, data }], in the order they are
- * stepped through. An absent or empty table leaves the generated scene as the
- * only source, which is how the shells behave if this file is ever left out.
+ * stepped through. These are the app's only built-in sources: there is no
+ * drawn scene to fall back on, so a build without this file opens empty.
  */
 window.DitherSamples = [
   // Gustave Moreau, Oedipus and the Sphinx, 1864, detail - The Met, New York (21.134.1), public domain / CC0

@@ -110,7 +110,7 @@
     source: null,       // { data, width, height } at working resolution
     original: null,     // ImageData of the working source, for compare
     preview: null,      // half-resolution { data, width, height }
-    name: 'demo',
+    name: 'untitled',
     result: null,       // last full-resolution result
     settings: D.mergeSettings(D.DEFAULTS),
     zoom: null,         // null = fit, otherwise a scale
@@ -1218,149 +1218,29 @@
 
   // ---- the built-in sources (so the page opens with art) ----
 
-  function rnd(i) {
-    const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-    return s - Math.floor(s);
-  }
-
-  function demoCloud(c, x, y, rx, ry, alpha) {
-    const g = c.createRadialGradient(x, y, 1, x, y, rx);
-    g.addColorStop(0, 'rgba(255,216,196,' + alpha + ')');
-    g.addColorStop(0.55, 'rgba(242,170,150,' + (alpha * 0.5) + ')');
-    g.addColorStop(1, 'rgba(230,150,140,0)');
-    c.save();
-    c.translate(x, y);
-    c.scale(1, ry / rx);
-    c.translate(-x, -y);
-    c.fillStyle = g;
-    c.beginPath();
-    c.arc(x, y, rx, 0, Math.PI * 2);
-    c.fill();
-    c.restore();
-  }
-
-  function demoRidge(c, w, baseY, amp, phase, seeds, color) {
-    c.fillStyle = color;
-    c.beginPath();
-    c.moveTo(0, baseY);
-    for (let x = 0; x <= w; x += 3) {
-      const t = x / w;
-      let y = 0;
-      for (let k = 1; k <= 3; k++) y += Math.sin(t * Math.PI * k * seeds + k * 2.3 + phase) / k;
-      c.lineTo(x, baseY - amp * (0.45 + 0.55 * y * 0.5 + 0.45));
-    }
-    c.lineTo(w, baseY);
-    c.closePath();
-    c.fill();
-  }
-
-  function drawDemo(canvasEl, w, h) {
-    const c = canvasEl.getContext('2d');
-    const horizon = Math.round(h * 0.62);
-
-    const sky = c.createLinearGradient(0, 0, 0, horizon);
-    sky.addColorStop(0, '#232a4d');
-    sky.addColorStop(0.42, '#6f4a6c');
-    sky.addColorStop(0.76, '#d07a5e');
-    sky.addColorStop(1, '#f7bc7c');
-    c.fillStyle = sky;
-    c.fillRect(0, 0, w, horizon);
-
-    c.fillStyle = 'rgba(255,255,255,0.85)';
-    for (let i = 0; i < 110; i++) {
-      const x = Math.round(rnd(i) * w);
-      const y = Math.round(rnd(i + 40) * horizon * 0.42);
-      const size = rnd(i + 80) > 0.85 ? 2 : 1;
-      c.fillRect(x, y, size, size);
-    }
-
-    const sunX = w * 0.62;
-    const sunY = horizon - h * 0.15;
-    const sunR = h * 0.085;
-    const halo = c.createRadialGradient(sunX, sunY, sunR * 0.4, sunX, sunY, sunR * 5);
-    halo.addColorStop(0, 'rgba(255,236,196,0.55)');
-    halo.addColorStop(0.4, 'rgba(255,172,112,0.22)');
-    halo.addColorStop(1, 'rgba(255,140,90,0)');
-    c.fillStyle = halo;
-    c.beginPath();
-    c.arc(sunX, sunY, sunR * 5, 0, Math.PI * 2);
-    c.fill();
-    const sun = c.createRadialGradient(sunX, sunY, 1, sunX, sunY, sunR);
-    sun.addColorStop(0, '#fff9e6');
-    sun.addColorStop(1, '#ffc873');
-    c.fillStyle = sun;
-    c.beginPath();
-    c.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    c.fill();
-
-    demoCloud(c, w * 0.2, h * 0.17, w * 0.15, h * 0.035, 0.5);
-    demoCloud(c, w * 0.76, h * 0.29, w * 0.11, h * 0.028, 0.42);
-    demoCloud(c, w * 0.44, h * 0.4, w * 0.09, h * 0.022, 0.3);
-
-    demoRidge(c, w, horizon, h * 0.2, 0.4, 6, '#564662');
-    demoRidge(c, w, horizon, h * 0.14, 1.7, 4, '#3a2f52');
-
-    const water = c.createLinearGradient(0, horizon, 0, h);
-    water.addColorStop(0, '#4b4269');
-    water.addColorStop(1, '#161a2e');
-    c.fillStyle = water;
-    c.fillRect(0, horizon, w, h - horizon);
-
-    for (let i = 0; i < 30; i++) {
-      const t = i / 30;
-      const y = horizon + t * (h - horizon);
-      const width = w * (0.03 + t * 0.2) * (0.5 + 0.5 * Math.abs(Math.sin(i * 1.7)));
-      const alpha = 0.42 * (1 - t) * (0.5 + 0.5 * Math.abs(Math.sin(i * 0.9)));
-      c.fillStyle = 'rgba(255,190,120,' + alpha.toFixed(3) + ')';
-      c.fillRect(Math.round(sunX - width / 2 + Math.sin(i * 2.1) * w * 0.012), Math.round(y), Math.round(width), 2);
-    }
-
-    c.fillStyle = '#0a0c14';
-    c.fillRect(0, horizon + (h - horizon) * 0.55, w, 3);
-    for (let i = 0; i < 7; i++) {
-      c.fillRect(Math.round(w * (0.06 + i * 0.13)), horizon + (h - horizon) * 0.55, 4, Math.round((h - horizon) * 0.4));
-    }
-
-    c.beginPath();
-    c.moveTo(w * 0.18, horizon - 2);
-    c.lineTo(w * 0.18, horizon - h * 0.075);
-    c.lineTo(w * 0.225, horizon - 2);
-    c.closePath();
-    c.fill();
-    c.fillRect(Math.round(w * 0.153), horizon, Math.round(w * 0.05), 3);
-  }
-
-  function loadDemo() {
-    const w = 960;
-    const h = 640;
-    const scratch = document.createElement('canvas');
-    scratch.width = w;
-    scratch.height = h;
-    drawDemo(scratch, w, h);
-    setSource(scratch.getContext('2d').getImageData(0, 0, w, h), 'demo scene', false);
-  }
-
-  // The paintings in samples.js come first and the drawn scene is the last
-  // stop, so a window always opens on a painting and the control in the Source
-  // panel steps through the lot. They travel as data URIs because a console
-  // opened from file:// may not read pixels back out of a local file: drawing
-  // one into a canvas taints it and getImageData throws. With no samples.js at
-  // all, SAMPLES is empty and the drawn scene is the only source.
+  // Every built-in source is a painting in samples.js: a window opens on one,
+  // and the control in the Source panel steps through the table and comes round
+  // again. Nothing here draws art of its own — the generated night scene the
+  // app used to open on, and its ridges and clouds, are gone. The samples
+  // travel as data URIs because a console opened from file:// may not read
+  // pixels back out of a local file: drawing one into a canvas taints it and
+  // getImageData throws.
   const SAMPLES = window.DitherSamples || [];
   let sampleStep = 0;
 
   function loadSample() {
-    const sample = SAMPLES[sampleStep];
-    sampleStep = (sampleStep + 1) % (SAMPLES.length + 1);
-    if (!sample) {
-      loadDemo();
+    if (!SAMPLES.length) {
+      // Only reachable if samples.js was left out of a build: say so instead
+      // of drawing something the app no longer has.
+      el.statStatus.textContent = 'No built-in sources are installed';
       return;
     }
+    const sample = SAMPLES[sampleStep];
+    sampleStep = (sampleStep + 1) % SAMPLES.length;
     const img = new Image();
     img.onload = function () { loadBitmap(img, sample.name); };
     img.onerror = function () {
       el.statStatus.textContent = 'Could not read the built-in sample';
-      loadDemo();
     };
     img.src = sample.data;
   }
