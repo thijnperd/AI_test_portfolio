@@ -40,9 +40,10 @@ there, and keep the two `README.md` files honest about which copy is which.
 
 ## Run the app
 
-Open `index.html` in a modern browser. It opens on a generated demo scene so
-there is something to dither immediately. Drop an image on the stage, paste one
-with `Ctrl+V`, or use **Open image…**.
+Open `index.html` in a modern browser. It opens on a built-in sample — three
+public-domain paintings ship with the page, and **Demo scene** steps through
+them and then a generated scene — so there is something to dither immediately.
+Drop an image on the stage, paste one with `Ctrl+V`, or use **Open image…**.
 
 ### Controls
 

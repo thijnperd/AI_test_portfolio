@@ -1216,7 +1216,7 @@
     img.src = url;
   }
 
-  // ---- demo scene (so the page opens with art) ----
+  // ---- the built-in sources (so the page opens with art) ----
 
   function rnd(i) {
     const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
@@ -1338,6 +1338,31 @@
     scratch.height = h;
     drawDemo(scratch, w, h);
     setSource(scratch.getContext('2d').getImageData(0, 0, w, h), 'demo scene', false);
+  }
+
+  // The paintings in samples.js come first and the drawn scene is the last
+  // stop, so a window always opens on a painting and the control in the Source
+  // panel steps through the lot. They travel as data URIs because a console
+  // opened from file:// may not read pixels back out of a local file: drawing
+  // one into a canvas taints it and getImageData throws. With no samples.js at
+  // all, SAMPLES is empty and the drawn scene is the only source.
+  const SAMPLES = window.DitherSamples || [];
+  let sampleStep = 0;
+
+  function loadSample() {
+    const sample = SAMPLES[sampleStep];
+    sampleStep = (sampleStep + 1) % (SAMPLES.length + 1);
+    if (!sample) {
+      loadDemo();
+      return;
+    }
+    const img = new Image();
+    img.onload = function () { loadBitmap(img, sample.name); };
+    img.onerror = function () {
+      el.statStatus.textContent = 'Could not read the built-in sample';
+      loadDemo();
+    };
+    img.src = sample.data;
   }
 
   // ---- export ----
@@ -1560,7 +1585,7 @@
     el.copy.addEventListener('click', copyPNG);
     el.random.addEventListener('click', randomize);
 
-    el.demo.addEventListener('click', loadDemo);
+    el.demo.addEventListener('click', loadSample);
     el.open.addEventListener('click', function () { el.file.click(); });
     el.file.addEventListener('change', function () {
       loadFile(el.file.files && el.file.files[0]);
@@ -1718,7 +1743,7 @@
     setQuality(state.quality);
     syncUI();
     bindVideo();
-    loadDemo();
+    loadSample();
   }
 
   // ---- video mode ----
