@@ -74,6 +74,11 @@ wander, cash out before one of them finds you. Dependency-free, openable from
     never from `table.round.road`. Put an animal in a hazard lane differently and the
     game is solved before the first click. The stage is side-on because the packs
     draw animals in profile — do not rotate a profile sprite to fake a top-down view.
+12. **Sealing follows the walk, not the outcome.** `paintSeal()` derives its walls
+    from `crossed`, and `view.freeze[lane]` records the moment a lane's herd stopped;
+    both reset on `place()`. A wall's position may never depend on the hidden road,
+    or the seal leaks the answer. Walls are drawn from the tiles sheet (row 1); do not
+    replace them with hand-drawn bricks while the pack can supply a wall.
 
 ## The house style
 

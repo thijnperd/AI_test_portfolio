@@ -32,6 +32,7 @@ var Art = (function () {
     animals: 'Assets/32rogues-0.5.0/32rogues/animals.png',
     items: 'Assets/32rogues-0.5.0/32rogues/items.png',
     anim: 'Assets/32rogues-0.5.0/32rogues/animated-tiles.png',
+    tiles: 'Assets/32rogues-0.5.0/32rogues/tiles.png',
     woods: 'Assets/pixel_16_woods v2 free/free_pixel_16_woods.png',
   };
 
@@ -79,6 +80,11 @@ var Art = (function () {
     flower: { cx: 16, cy: 3 },
     rock: { cx: 14, cy: 2 },
   };
+
+  /* Row 2 of the tiles sheet is a capped stone wall. A wall running across the
+     track is seen edge-on, so the part that shows is its top: the first eight
+     rows of the cell, tiled sideways at a whole scale factor. */
+  const WALL = { cx: 1, cy: 1, rows: 16 };
 
   const state = {
     loaded: false,
@@ -409,6 +415,50 @@ var Art = (function () {
     return true;
   }
 
+  /* ------------------------------------------------------------------ walls */
+
+  /**
+   * A stone wall running across the track, `width` pixels wide, its top-left at
+   * (x, y). Returns the thickness drawn, so the caller can centre it on a lane
+   * boundary without guessing.
+   */
+  function wall(ctx, x, y, width, scale) {
+    const img = sheet('tiles');
+    const s = Math.max(1, Math.round(scale || 2));
+    const h = WALL.rows * s;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (img) {
+      const tw = CELL * s;
+      for (let dx = 0; dx < width; dx += tw) {
+        ctx.drawImage(
+          img,
+          WALL.cx * CELL,
+          WALL.cy * CELL,
+          CELL,
+          WALL.rows,
+          R(x + dx),
+          R(y),
+          tw,
+          h
+        );
+      }
+    } else {
+      // No pack: a plain stone cap, still two tones so it reads as a wall.
+      ctx.fillStyle = '#5d5c6e';
+      ctx.fillRect(R(x), R(y), R(width), h);
+      ctx.fillStyle = '#8a8fa4';
+      ctx.fillRect(R(x), R(y), R(width), Math.max(2, R(h / 3)));
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(R(x), R(y + h - 2), R(width), 2);
+    }
+    // Contact shadow, so the wall sits on the track instead of floating on it.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(R(x), R(y + h - 2), R(width), 2);
+    ctx.restore();
+    return h;
+  }
+
   /* ------------------------------------------------------------------ coins */
 
   function coin(ctx, x, y, size, opts) {
@@ -510,6 +560,7 @@ var Art = (function () {
     herdById,
     ground,
     prop,
+    wall,
     coin,
     lantern,
     hasLantern,

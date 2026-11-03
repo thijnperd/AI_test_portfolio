@@ -168,6 +168,7 @@
     worldH: 0,
     camY: 0,
     camTarget: 0,
+    freeze: {},
     hop: null,
     bust: null,
     trauma: 0,
@@ -271,6 +272,9 @@
   const ACCENT = '#7aa2ff';
   /* Width of the payout rail down the right edge of the stage. */
   const TAG_RAIL = 50;
+  /* Rows of wall tile Art.wall draws; kept here so the sealing code can centre
+     a wall on a lane boundary without asking for it back. */
+  const WALL_ROWS = 16;
 
   function shortMult(value) {
     if (!isFinite(value)) return '\u2014';
@@ -475,14 +479,19 @@
     const seconds = now / 1000;
     const pad = laneH * 1.6;
     const size = Math.max(28, R(laneH * 0.94));
+    if (!t.round) view.freeze = {};
 
     for (let lane = 1; lane <= lanes(); lane++) {
       const base = sy(laneBottom(lane)) - laneH * 0.1;
       if (base < -laneH || base - laneH > view.h + laneH) continue;
       const beasts = laneHerd(lane, t.difficultyId);
+      // A lane you have left is sealed behind you, and its herd stops walking
+      // from the moment you stepped out of it.
+      const frozen = view.freeze[lane];
+      const clock = frozen === undefined ? seconds : Math.min(seconds, frozen);
       for (const beast of beasts) {
         const span = view.w + pad * 2;
-        let travel = (beast.offset + seconds * beast.speed * beast.dir) % 1;
+        let travel = (beast.offset + clock * beast.speed * beast.dir) % 1;
         if (travel < 0) travel += 1;
         Art.beast(ctx, beast.species, R(travel * span - pad), base, size, beast.dir);
       }
@@ -569,6 +578,25 @@
     Art.beast(ctx, view.bust.species || 'cow', x, base, laneH * 1.05, dir);
   }
 
+  /* Every lane the bird has crossed is sealed: a stone wall along its top edge
+     and its bottom edge, and one across the kerb it started from. The run of
+     walls is the progress bar — the bird hops the next one on its way up. */
+  function paintSeal() {
+    const crossed = crossedNow();
+    if (crossed < 1) return;
+    const scale = view.laneH >= 62 ? 2 : 1;
+    const thick = WALL_ROWS * scale;
+
+    const kerb = sy(laneBottom(1)) - thick / 2;
+    if (kerb > -thick && kerb < view.h + thick) Art.wall(ctx, 0, kerb, view.w, scale);
+
+    for (let i = 1; i <= crossed; i++) {
+      const y = sy(laneTop(i)) - thick / 2;
+      if (y < -thick || y > view.h + thick) continue;
+      Art.wall(ctx, 0, y, view.w, scale);
+    }
+  }
+
   function paintParticles() {
     for (const feather of view.feathers) {
       Art.feather(ctx, feather.x, feather.y, feather.size, feather.life, feather.rot);
@@ -588,6 +616,7 @@
     paintGround();
     paintLanterns(now);
     paintHerd(now);
+    paintSeal();
     paintTags();
     paintBird(now);
     paintBustBeast(now);
@@ -1052,17 +1081,22 @@
         return;
       }
       // A fresh road carries none of the last round's wreckage: no lingering
-      // red flash, no tumbling bird, no card still waiting on its timer.
+      // red flash, no tumbling bird, no card still waiting on its timer, and no
+      // walls left over from the round before.
       resultToken += 1;
       view.bust = null;
       view.flash = 0;
       view.feathers = [];
       view.hop = null;
+      view.freeze = {};
     }
     const res = t.cross();
     if (!res.ok) return;
 
     if (res.safe) {
+      // This lane is crossed: it is sealed the moment you land, and its herd
+      // stops walking there.
+      view.freeze[res.crossed] = performance.now() / 1000;
       view.hop = {
         from: res.crossed - 1,
         to: res.crossed,
@@ -1294,6 +1328,7 @@
         atlas: Art.usingAtlas(),
         coins: view.coins.length,
         feathers: view.feathers.length,
+        frozen: Object.keys(view.freeze).length,
       };
     },
   };

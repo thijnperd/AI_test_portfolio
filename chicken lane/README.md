@@ -26,6 +26,10 @@ Your bird is cosmetic: nine of them are here — rooster, chicken, duck, goose,
 turkey, peacock, penguin, cassowary and emu — and every one crosses at exactly
 the same odds.
 
+Every lane you cross is **sealed behind you**: a stone wall closes above and below
+it and its herd stops walking, so the track turns into a corridor of everything
+you have already got through and the bird hops over the next wall on its way up.
+
 The whole road for the round is fixed before your first step, so nothing you do
 can move an animal into your lane. The payout rail down the right edge shows what
 each remaining lane pays (it is painted over the herds, so traffic can never hide
