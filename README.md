@@ -22,6 +22,7 @@ also runs in Node.js so its rules are covered by tests.
 | [wave function collapse](wave%20function%20collapse) | A tilemap generator that grows maps from edge constraints alone, with backtracking. |
 | [2048](2048) | The sliding-tile puzzle, with custom blocks (divide, add, multiply — each with its own spawn rarity), a milestone ladder derived from the blocks in play, and an expectimax AI you can watch solve the board. |
 | [RobloxGame](RobloxGame) | A design kit, not code: three master prompts and the research behind them for building an original Roblox steal-and-collect game. |
+| [chicken lane](chicken%20lane) | A free, points-only road-crossing multiplier game: cross up to 24 lanes of night traffic, cash out before a car finds you, with the whole 96% odds table printed in the rail and every round reproducible from its seed. |
 | [Wiekentwie](Wiekentwie) | A Dutch Excel/VBA app ("Wie kent wie?") for offering and searching contacts. |
 
 ## Running anything
@@ -34,15 +35,15 @@ install. For the projects with a testable core, the tests use Node's built-in
 cd boids && node test.js
 ```
 
-That covers `2048`, `analog horror raycaster`, `boids`, `dither studio web`,
-`falling sand`, `fluid dynamics`, `game of life`, `logic puzzles`,
+That covers `2048`, `analog horror raycaster`, `boids`, `chicken lane`,
+`dither studio web`, `falling sand`, `fluid dynamics`, `game of life`, `logic puzzles`,
 `maze generator and solver`, and `wave function collapse`. (Wiekentwie is
 tested with PowerShell against a real Excel install; the algorithmic-art studio
 is verified in the browser.)
 
 ## How the repository is organised
 
-Thirteen independent projects, plus the shared documents and tooling that keep
+Fourteen independent projects, plus the shared documents and tooling that keep
 them consistent:
 
 - [`ai_startup_instructions.md`](ai_startup_instructions.md) — the workflow for

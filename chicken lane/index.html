@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chicken Lane — a free crossing game (points only)</title>
+  <meta name="description" content="Chicken Lane is a free, points-only browser game: cross 25 lanes of night traffic, watch the multiplier climb, and cash out before a car finds you. 96% return to player, published and explained." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside class="panel">
+    <h1 class="brand">CHICKEN <span>LANE</span></h1>
+    <p class="muted intro">Cross 25 lanes of night traffic. Every safe step raises the multiplier. Cash out before a car finds you.</p>
+
+    <div class="readout">
+      <div class="box">
+        <span>Points</span>
+        <b id="points">1,000</b>
+      </div>
+      <div class="box">
+        <span>Road</span>
+        <b id="road-no">#1</b>
+      </div>
+    </div>
+    <button id="topup" class="chip chip-wide">+ 1,000 free points</button>
+
+    <section class="group">
+      <h2 class="small">Bet <em id="bet-note" class="asidelabel"></em></h2>
+      <div class="bet-row">
+        <button id="bet-half" class="btn btn-step" aria-label="Halve the bet">½</button>
+        <input id="bet" type="number" min="1" step="1" value="25" inputmode="numeric" aria-label="Bet in points" />
+        <button id="bet-double" class="btn btn-step" aria-label="Double the bet">2×</button>
+      </div>
+      <div class="chips">
+        <button class="chip" data-bet="10">10</button>
+        <button class="chip" data-bet="25">25</button>
+        <button class="chip" data-bet="100">100</button>
+        <button class="chip" data-bet="max">Max</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2 class="small">Road</h2>
+      <div class="roads" id="roads" role="radiogroup" aria-label="How many hazards hide in the 25 lanes"></div>
+      <p class="muted hint" id="road-note"></p>
+    </section>
+
+    <section class="group actions">
+      <button id="cross" class="btn btn-primary">Cross</button>
+      <button id="cash" class="btn btn-cash" disabled>Cash out</button>
+      <p class="muted keys"><kbd>Space</kbd> cross · <kbd>C</kbd> cash out</p>
+    </section>
+
+    <details class="fold" id="odds-fold">
+      <summary>Odds <span class="muted" id="odds-summary"></span></summary>
+      <div class="tablewrap">
+        <table class="odds">
+          <thead>
+            <tr><th>Lane</th><th>Pays</th><th>Reach it</th><th>Survive it</th></tr>
+          </thead>
+          <tbody id="odds-body"></tbody>
+        </table>
+      </div>
+      <p class="muted tiny">Every row returns 96.00 points per 100 staked. That is not a target you can aim for — it is the same number at every lane, which is why stopping earlier changes how much you can lose per round, never how much you lose on average.</p>
+    </details>
+
+    <details class="fold" id="fair-fold">
+      <summary>Fairness</summary>
+      <p class="muted tiny">The whole road — all 25 lanes — is fixed from these three values before your first step. Nothing you do moves a car.</p>
+      <dl class="facts">
+        <dt>Server seed</dt><dd id="fact-seed" title="">—</dd>
+        <dt>Server hash</dt><dd id="fact-hash">—</dd>
+        <dt>Client seed</dt><dd><input id="client-seed" type="text" spellcheck="false" aria-label="Client seed" /></dd>
+        <dt>Round nonce</dt><dd id="fact-nonce">0</dd>
+        <dt>Last road</dt><dd id="fact-road">no round yet</dd>
+      </dl>
+    </details>
+
+    <details class="fold" id="session-fold">
+      <summary>Session</summary>
+      <dl class="facts">
+        <dt>Rounds</dt><dd id="stat-rounds">0</dd>
+        <dt>Busts</dt><dd id="stat-busts">0</dd>
+        <dt>Cashed</dt><dd id="stat-cashes">0</dd>
+        <dt>Staked</dt><dd id="stat-staked">0</dd>
+        <dt>Returned</dt><dd id="stat-returned">0</dd>
+        <dt>Net</dt><dd id="stat-net">0</dd>
+        <dt>Best</dt><dd id="stat-best">—</dd>
+      </dl>
+    </details>
+
+    <p class="muted legal">
+      <b>This is a game, not a casino.</b> Points only: nothing to deposit, nothing to buy, nothing to withdraw, no prizes.
+      96% return to player means the house keeps 4 of every 100 points staked — the game shows you the whole table rather than hiding it.
+      18+ · not affiliated with Rainbet, Stake, InOut Games or any operator.
+    </p>
+  </aside>
+
+  <main class="stage">
+    <div class="statusbar">
+      <span>Points <b id="sb-points">1,000</b></span>
+      <span>Multiplier <b id="sb-mult">—</b></span>
+      <span>Next lane <b id="sb-next">—</b></span>
+      <span>Road <b id="sb-road">Medium</b></span>
+      <span>Crossed <b id="sb-crossed">0 / 22</b></span>
+      <span>Return <b>96%</b></span>
+    </div>
+
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="road" role="img" aria-label="A dark road at night seen from above: a chicken stands at the near kerb, cars sweep past in 25 lanes, and the far kerb waits at the end."></canvas>
+      <p class="canvas-hint" id="canvas-hint">Press <kbd>space</kbd> to cross</p>
+
+      <div class="result" id="result" hidden>
+        <div class="card">
+          <p class="kicker" id="result-kicker">Cashed out</p>
+          <p class="big" id="result-mult">1.00×</p>
+          <p class="line" id="result-line">+0 points</p>
+          <p class="muted tiny" id="result-note"></p>
+          <div class="buttons">
+            <button id="again" class="btn btn-primary">Cross again</button>
+            <button id="dismiss" class="btn">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <button id="mute" class="mute" aria-pressed="false" aria-label="Sound on">♪</button>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
