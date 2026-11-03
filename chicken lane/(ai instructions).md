@@ -17,7 +17,8 @@ core under Node tests.
 | File | Responsibility |
 |---|---|
 | `core.js` | `LANES`, `RTP`, `DIFFICULTIES`, the survival/multiplier maths, `ladder`, SHA-256, `floatStream`, `makeRoad`, the `Table` round engine, formatting. **No DOM.** |
-| `app.js` | Canvas painting, panel rendering, input, sound, the result card, the `window.ChickenLane` check seam. |
+| `app.js` | Panel rendering, input, sound, game feel (hop, hit-stop, shake, particles, best marker), the result card, the `window.ChickenLane` check seam. |
+| `art.js` | Every pixel: atlas loading, the bird catalogue, coins, lanterns, cars, particles, and the hand-drawn fallback. |
 | `index.html` | Structure and script order. |
 | `style.css` | Tokens, rail, playfield palette, states, phone contraction. |
 | `test.js` | Node tests for the core only. |
@@ -53,6 +54,20 @@ core under Node tests.
    "deposit", no affiliate or referral link, and no cap on the free top-up. The
    odds table and the house edge stay visible. This is the project's whole
    premise, not a feature you can trade away.
+
+8. **The sprite pack is optional, and it is not ours to publish.** `Assets/` holds
+   the "32rogues" pack (Seth Boyles). Its licence permits use but **forbids
+   redistribution**, and this repository is public — so it is `.gitignore`d, and it
+   must stay that way. Never stage it, never `git add -f` it, never copy its sheets
+   into a build or a data URI. Every sprite has a hand-drawn fallback, so the game
+   is complete without it; that fallback is what a fresh clone and GitHub Pages get.
+9. **Pixel art is drawn, not resampled.** `imageSmoothingEnabled = false` after every
+   resize, integer positions, integer scale factors (the 32 px cell, or the 16 px
+   stand-in), and `image-rendering: pixelated` on the canvas. A sprite drawn at
+   `x = 210.4` is a bug, not a nicety.
+10. **The feel layer may not touch the outcome.** Hit-stop, shake, squash, particles
+    and the hop melody are presentation only; the round is settled by the time
+    `cross()` returns. Never let an animation or a sound decide what happened.
 
 ## The house style
 

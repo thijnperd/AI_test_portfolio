@@ -23,3 +23,7 @@ node_modules/
 # copy with its own git history, so it stays out of this repository — see
 # `dither studio web/README.md` for the pairing rule.
 dither-studio/
+
+# Third-party sprite pack: its licence forbids redistribution, so it stays local.
+# The game falls back to its own pixel art when this folder is absent.
+chicken lane/Assets/

@@ -45,6 +45,7 @@
       <p class="muted hint" id="road-note"></p>
     </section>
 
+
     <section class="group actions">
       <button id="cross" class="btn btn-primary">Cross</button>
       <button id="cash" class="btn btn-cash" disabled>Cash out</button>
@@ -86,7 +87,14 @@
         <dt>Returned</dt><dd id="stat-returned">0</dd>
         <dt>Net</dt><dd id="stat-net">0</dd>
         <dt>Best</dt><dd id="stat-best">—</dd>
+        <dt>Session goal</dt><dd id="stat-goal">0 / 10 rounds</dd>
       </dl>
+    </details>
+
+    <details class="fold" id="bird-fold">
+      <summary>Your bird <span class="muted" id="bird-name">Rooster</span></summary>
+      <div class="birds" id="birds" role="radiogroup" aria-label="Choose your bird"></div>
+      <p class="muted tiny">Cosmetic only — every bird crosses at exactly the same odds.</p>
     </details>
 
     <p class="muted legal">
@@ -115,6 +123,7 @@
           <p class="kicker" id="result-kicker">Cashed out</p>
           <p class="big" id="result-mult">1.00×</p>
           <p class="line" id="result-line">+0 points</p>
+          <p class="next" id="result-next"></p>
           <p class="muted tiny" id="result-note"></p>
           <div class="buttons">
             <button id="again" class="btn btn-primary">Cross again</button>
@@ -128,6 +137,7 @@
   <button id="mute" class="mute" aria-pressed="false" aria-label="Sound on">♪</button>
 
   <script src="core.js"></script>
+  <script src="art.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

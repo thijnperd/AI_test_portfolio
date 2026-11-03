@@ -22,9 +22,14 @@ buy, nothing to withdraw, no prizes, no affiliate links. See
    number of points you would take.
 5. Reach the far kerb and the round pays itself out at the top multiplier.
 
+Your bird is cosmetic: nine of them are here — rooster, chicken, duck, goose,
+turkey, peacock, penguin, cassowary and emu — and every one crosses at exactly
+the same odds.
+
 The whole road for the round is fixed before your first step, so nothing you do
-can move a car. The lane tags on the asphalt show what each remaining lane pays;
-the next lane is highlighted because that is the decision in front of you.
+can move a car. The payout gutter along the bottom of the road shows what each
+remaining lane pays, the next lane is tinted because that is the decision in
+front of you, and a dashed line marks your own best cash-out on this road.
 
 | Key | What it does |
 |---|---|
@@ -146,25 +151,43 @@ dev tools can read the road. What it does honestly is make cheating pointless an
 verification trivial — the claim being tested is "the game did not change the road
 under you", and that claim is exactly true.
 
-## Assets
+## Art
 
-There are none — and that is deliberate. The playfield is drawn in code on one
-canvas: asphalt bands, dashed lane markings, a hatched near kerb, a chequered far
-kerb with the golden egg at the end of the road, four kinds of car with headlights
-and tail lights, and a white bird with a red comb and a worried eye. Sound is two
-oscillators and an envelope through the Web Audio API; there is no audio file.
+Pixel art on a 32 px grid, drawn nearest-neighbour and scaled by whole numbers, because
+half-pixel scaling is what makes a pixel scene look soft. Asphalt bands, lane dashes,
+a hatched kerb, a chequered far kerb with the golden egg, four kinds of car, a payout
+gutter along the bottom, and a bird that crouches, stretches and squashes when it hops.
 
-That means no image, font or audio licensing, a folder that stays a few files,
-and art that rescales cleanly from a 390 px phone to a wide desktop without a
-second set of sprites. It is also the only way to be sure nothing here is a traced
-copy of somebody else's chicken.
+The birds, the coins and the flickering lanterns come from the **32rogues** pack by
+**Seth Boyles** — a generous free pack with one catch worth knowing about: its licence
+allows use in commercial and non-commercial projects but **forbids redistribution**,
+and this repository is public. So the pack itself is `.gitignore`d
+(`chicken lane/Assets/`) and is not in git, and everything that needs a sprite has a
+hand-drawn stand-in in `art.js`, rendered from a 16x16 character grid and tinted eight
+ways to keep the picker useful.
+
+That means the game is complete either way. With the pack on disk you get its rooster,
+duck, penguin and the rest, real coin sprites and lantern light. In a fresh clone, on
+GitHub Pages, or on anyone else's machine the fallback art takes over and the layout,
+sizes and feel are identical — only the pixels differ. Both are one URL apart: open
+`index.html` and `index.html?art=code`.
+
+Cars, road markings, kerbs, dust and feathers are this project's own — there are no
+vehicles in the pack. Sound is two oscillators and an envelope through the Web Audio
+API, so there is no audio file anywhere.
+
+The pack's licence also rules out NFT/blockchain use and use in generative-AI or
+machine-learning projects. Read it before taking this game anywhere commercial:
+`Assets/32rogues-0.5.0/32rogues/LICENSE.txt` if you have the folder, and the credit
+above if you do not.
 
 ## Files
 
 | File | Responsibility |
 |---|---|
 | `core.js` | The rules: the 25-lane model, the ladder, SHA-256, the road generator, the round engine and the points arithmetic. No DOM. Exports `CluckCore` for the browser and for Node. |
-| `app.js` | The browser half: canvas painting, the rail, keyboard, sound, the result card, and the `window.ChickenLane` seam the browser checks drive. |
+| `app.js` | The browser half: the rail, keyboard, sound, game feel (hop, hit-stop, shake, particles), the result card, and the `window.ChickenLane` seam the browser checks drive. |
+| `art.js` | Every pixel: the atlas loader, the bird catalogue, coins, lanterns, cars, particles, and the hand-drawn fallback used when the sprite pack is absent. |
 | `index.html` | Page structure and script order (`core.js`, then `app.js`). |
 | `style.css` | The house tokens, the console rail, the playfield palette, states, and the phone contraction. |
 | `test.js` | Node tests for the core. Not UI tests. |
@@ -190,6 +213,11 @@ bash tools/check.sh "chicken lane/index.html" --expect "#road" --wait 900 \
   --eval "window.ChickenLane.cross(); window.ChickenLane.cross(); JSON.stringify(window.ChickenLane.state())"
 ```
 
-The seam is `cross()`, `cash()`, `setBet(points)`, `setRoad(id)` and `state()`, so
-a check can play a round without waiting on animation timers. The result card is
-verified by computed `display`, never by reading `.hidden`.
+The seam is `cross()`, `cash()`, `setBet(points)`, `setRoad(id)`, `setBird(id)` and
+`state()`, so a check can play a round without waiting on animation timers. The result
+card is verified by computed `display`, never by reading `.hidden`.
+
+Two more paths worth checking: the fallback art (`index.html?art=code`), because that
+is what anyone without the sprite pack sees, and the phone layout at
+`--size 390x844 --touch --dpr 2`, where the two action buttons sit side by side on a
+sticky bar.

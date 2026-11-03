@@ -301,12 +301,13 @@ button, input { font: inherit; color: inherit; }
 }
 
 .btn-cash[data-live="1"] {
-  color: var(--text);
-  border-color: #4a5570;
+  color: var(--accent);
+  border-color: #3c4a68;
   background: #1d2331;
+  font-weight: 700;
 }
 
-.btn-cash[data-live="1"]:hover { border-color: var(--accent); }
+.btn-cash[data-live="1"]:hover { border-color: var(--accent); background: #212a3b; }
 
 .keys { margin: 8px 0 0; font-size: 10px; text-align: center; }
 
@@ -424,6 +425,34 @@ kbd {
 
 .legal b { color: var(--text); font-weight: 600; }
 
+/* ---------------------------------------------------------------- birds */
+
+.birds {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+
+.bird {
+  display: grid;
+  place-items: center;
+  padding: 5px 2px 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.bird canvas { image-rendering: pixelated; display: block; }
+.bird:hover { border-color: #3a4152; }
+
+.bird[aria-checked="true"] {
+  border-color: var(--accent);
+  background: #1c2333;
+}
+
 /* ---------------------------------------------------------------- stage */
 
 .stage {
@@ -463,15 +492,16 @@ kbd {
   display: block;
   width: 100%;
   height: 100%;
+  image-rendering: pixelated;
 }
 
 .canvas-hint {
   position: absolute;
   left: 14px;
-  bottom: 12px;
+  top: 10px;
   margin: 0;
   font-size: 11px;
-  color: #6d748a;
+  color: #7b8298;
   pointer-events: none;
   transition: opacity 240ms ease;
 }
@@ -525,6 +555,15 @@ kbd {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+
+.card .next {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--accent);
+  min-height: 1px;
+}
+
+.card .next:empty { display: none; }
 
 .card .buttons {
   display: grid;
@@ -584,11 +623,17 @@ kbd {
     position: sticky;
     bottom: 0;
     z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    align-items: stretch;
     background: var(--panel);
     margin-bottom: 0;
     padding: 8px 0 10px;
     border-top: 1px solid var(--line);
   }
+
+  .actions .btn { margin-bottom: 0; }
 
   .intro { display: none; }
   .keys { display: none; }

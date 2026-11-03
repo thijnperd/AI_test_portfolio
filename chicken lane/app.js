@@ -1,20 +1,31 @@
 /* app.js — the browser half of Chicken Lane.
  *
  * Everything here is presentation and input. The rules, the odds and the
- * randomness live in core.js, which knows nothing about a DOM.
+ * randomness live in core.js, which knows nothing about a DOM; the pixels live in
+ * art.js, which knows nothing about the game.
  *
- * The road is drawn, not shipped: asphalt bands, lane dashes, traffic and the
- * bird are all paths on one small canvas. That keeps the project a single folder
- * with no image files, and it means the playfield can be restyled without
- * touching the maths.
+ * FEEL NOTES (kept here because they are tuning, not rules):
+ *  - a hop is ~310 ms: 60 ms crouch with squash, 180 ms arc with stretch, 70 ms
+ *    landing squash and a puff of dust. Input is never blocked by it.
+ *  - a crash gets 70 ms of hit-stop before the bird moves, then a 450 ms tumble.
+ *  - screen shake uses a trauma value that decays: shake = trauma^2, so small
+ *    events stay subtle and big ones read big without a jolt.
+ *  - the hop note climbs a pentatonic scale with the lane number, so a long run
+ *    becomes a melody rather than the same blip.
+ * None of that changes an outcome: the road is already fixed when you click.
  */
 (function () {
   'use strict';
 
   const Core = window.CluckCore;
+  const Art = window.Art;
   const STORE = 'chicken-lane-v1';
+  const SESSION_GOAL = 10;
+  const R = Math.round;
   const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduceMotion = () => !!(motionQuery && motionQuery.matches);
+  const params = new URLSearchParams(window.location.search);
+  const forceCodeArt = params.get('art') === 'code';
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -28,6 +39,8 @@
     chips: document.querySelectorAll('.chip[data-bet]'),
     roads: $('roads'),
     roadNote: $('road-note'),
+    birds: $('birds'),
+    birdName: $('bird-name'),
     cross: $('cross'),
     cash: $('cash'),
     oddsSummary: $('odds-summary'),
@@ -44,6 +57,7 @@
     statReturned: $('stat-returned'),
     statNet: $('stat-net'),
     statBest: $('stat-best'),
+    statGoal: $('stat-goal'),
     sbPoints: $('sb-points'),
     sbRoad: $('sb-road'),
     sbMult: $('sb-mult'),
@@ -56,6 +70,7 @@
     rKicker: $('result-kicker'),
     rMult: $('result-mult'),
     rLine: $('result-line'),
+    rNext: $('result-next'),
     rNote: $('result-note'),
     card: document.querySelector('.card'),
     again: $('again'),
@@ -63,7 +78,7 @@
     mute: $('mute'),
   };
 
-  /* --------------------------------------------------------------- state */
+  /* --------------------------------------------------------------- storage */
 
   function readStore() {
     try {
@@ -93,10 +108,27 @@
       serverSeed: randomSeed(),
     }),
     muted: !!saved.muted,
+    bird: typeof saved.bird === 'string' ? saved.bird : 'rooster',
+    best: saved.best && typeof saved.best === 'object' ? saved.best : {},
     lastMult: 0,
     oddsFor: null,
     oddsRows: [],
+    roundsThisSession: 0,
   };
+
+  function bestFor(id) {
+    const value = state.best[id];
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  function recordBest(id, multiplier) {
+    if (!(multiplier > 0)) return false;
+    if (multiplier > bestFor(id) + 0.004) {
+      state.best[id] = multiplier;
+      return true;
+    }
+    return false;
+  }
 
   function writeStore() {
     const t = state.table;
@@ -109,6 +141,8 @@
           difficulty: t.difficultyId,
           clientSeed: t.clientSeed,
           muted: state.muted,
+          bird: state.bird,
+          best: state.best,
         })
       );
     } catch (err) {
@@ -129,14 +163,18 @@
     camTarget: 0,
     hop: null,
     bust: null,
+    trauma: 0,
     flash: 0,
     feathers: [],
+    coins: [],
+    pointsShown: 0,
     last: 0,
     raf: 0,
   };
 
   const ctx = els.canvas.getContext('2d');
   const lanes = () => state.table.clearSteps;
+  const crossedNow = () => (state.table.round ? state.table.round.crossed : 0);
   const probe = (crossed) => view.x0 + (crossed - 0.5) * view.laneW;
 
   function clampCam(target) {
@@ -145,26 +183,30 @@
     return Math.min(max, Math.max(min, target));
   }
 
+  function birdHeight() {
+    return Math.max(30, Math.min(104, view.laneW * 0.95));
+  }
+
   function resize() {
     const rect = els.wrap.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    view.w = Math.max(300, Math.round(rect.width));
-    view.h = Math.max(220, Math.round(rect.height));
+    view.w = Math.max(300, R(rect.width));
+    view.h = Math.max(220, R(rect.height));
     view.dpr = dpr;
-    els.canvas.width = Math.round(view.w * dpr);
-    els.canvas.height = Math.round(view.h * dpr);
+    els.canvas.width = R(view.w * dpr);
+    els.canvas.height = R(view.h * dpr);
     els.canvas.style.width = view.w + 'px';
     els.canvas.style.height = view.h + 'px';
-    // Aim for about seven lanes on screen: enough to see the next three steps.
-    view.laneW = Math.max(34, Math.min(88, view.w / 7.4));
-    view.x0 = view.laneW * 1.15;
+    // About five and a half lanes on screen: chunky sprites, and you can still
+    // see what the next three steps pay.
+    view.laneW = Math.max(40, Math.min(104, R(view.w / 5.8)));
+    view.x0 = R(view.laneW * 1.15);
     view.worldW = view.x0 + lanes() * view.laneW + view.laneW * 1.9;
     view.camTarget = clampCam(probe(crossedNow()) - view.w * 0.34);
     view.camX = view.camTarget;
+    ctx.imageSmoothingEnabled = false;
     draw(performance.now());
   }
-
-  const crossedNow = () => (state.table.round ? state.table.round.crossed : 0);
 
   /* --------------- traffic: deterministic per lane, cosmetic only -------- */
 
@@ -180,10 +222,10 @@
   }
 
   const TRAFFIC = {
-    easy: { cars: 1, speed: 0.9 },
-    medium: { cars: 2, speed: 1.05 },
-    hard: { cars: 2, speed: 1.25 },
-    daredevil: { cars: 3, speed: 1.55 },
+    easy: { cars: 1, speed: 0.85 },
+    medium: { cars: 2, speed: 1.0 },
+    hard: { cars: 2, speed: 1.2 },
+    daredevil: { cars: 3, speed: 1.5 },
   };
 
   const carCache = new Map();
@@ -192,15 +234,14 @@
     if (carCache.has(key)) return carCache.get(key);
     const mode = TRAFFIC[difficultyId] || TRAFFIC.medium;
     const rnd = mulberry32(lane * 2654435761 + 12345);
-    const count = mode.cars;
     const cars = [];
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < mode.cars; i++) {
       cars.push({
         offset: rnd(),
         speed: (0.07 + rnd() * 0.09) * mode.speed,
         dir: lane % 2 === 0 ? 1 : -1,
-        tone: ['#2b3140', '#333a4b', '#3a2f38', '#2c3a3c'][Math.floor(rnd() * 4)],
-        truck: rnd() > 0.72,
+        tone: Art.CAR_TONES[Math.floor(rnd() * Art.CAR_TONES.length)],
+        truck: rnd() > 0.7,
       });
     }
     carCache.set(key, cars);
@@ -210,6 +251,7 @@
   /* ------------------------------------------------------------- drawing */
 
   const MONO = '"SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace';
+  const ACCENT = '#7aa2ff';
 
   function shortMult(value) {
     if (!isFinite(value)) return '\u2014';
@@ -221,7 +263,6 @@
   }
 
   function paintGround() {
-    const t = state.table;
     const laneW = view.laneW;
     const count = lanes();
 
@@ -235,12 +276,10 @@
       const x = roadLeft + i * laneW;
       if (x + laneW < -4 || x > view.w + 4) continue;
       ctx.fillStyle = i % 2 ? '#14161c' : '#171a21';
-      ctx.fillRect(x, 0, laneW + 0.5, view.h);
+      ctx.fillRect(R(x), 0, laneW + 1, view.h);
     }
 
-    // The two kerbs, hatched so they read as pavement rather than more road.
-    ctx.strokeStyle = '#232833';
-    ctx.lineWidth = 1;
+    // Kerbs, hatched so they read as pavement rather than more road.
     const hatched = (from, to) => {
       ctx.save();
       ctx.beginPath();
@@ -249,6 +288,7 @@
       ctx.fillStyle = '#1b1f27';
       ctx.fillRect(from, 0, to - from, view.h);
       ctx.strokeStyle = '#222834';
+      ctx.lineWidth = 1;
       for (let y = -40; y < view.h + 40; y += 14) {
         ctx.beginPath();
         ctx.moveTo(from, y);
@@ -269,8 +309,8 @@
       const x = roadLeft + i * laneW;
       if (x < -6 || x > view.w + 6) continue;
       ctx.beginPath();
-      ctx.moveTo(x, -10);
-      ctx.lineTo(x, view.h + 10);
+      ctx.moveTo(R(x) + 0.5, -10);
+      ctx.lineTo(R(x) + 0.5, view.h + 10);
       ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -281,25 +321,25 @@
     for (const x of [roadLeft, roadRight]) {
       if (x < -6 || x > view.w + 6) continue;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, view.h);
+      ctx.moveTo(R(x) + 0.5, 0);
+      ctx.lineTo(R(x) + 0.5, view.h);
       ctx.stroke();
     }
 
-    // The far kerb: a chequered strip and the golden egg at the end of the road.
+    // Far kerb: chequered strip, the golden egg, and a lantern at either end.
     if (roadRight > -laneW && roadRight < view.w + laneW * 2) {
-      const sq = Math.max(7, laneW * 0.18);
+      const sq = Math.max(8, R(laneW * 0.2));
       for (let y = 0, row = 0; y < view.h; y += sq, row++) {
         ctx.fillStyle = row % 2 ? '#e8eaf0' : '#2c313d';
-        ctx.fillRect(roadRight + 4, y, sq, sq);
+        ctx.fillRect(R(roadRight + 4), y, sq, sq);
         ctx.fillStyle = row % 2 ? '#2c313d' : '#e8eaf0';
-        ctx.fillRect(roadRight + 4 + sq, y, sq, sq);
+        ctx.fillRect(R(roadRight + 4 + sq), y, sq, sq);
       }
       const eggX = roadRight + laneW * 1.05;
       const eggY = view.h * 0.5;
       const r = Math.max(9, laneW * 0.2);
       ctx.save();
-      ctx.translate(eggX, eggY);
+      ctx.translate(R(eggX), R(eggY));
       ctx.fillStyle = '#e8c26a';
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 0.82, r * 1.15, 0, 0, Math.PI * 2);
@@ -311,17 +351,25 @@
       ctx.restore();
     }
 
-    // Lane numbers, every fifth lane, so a long road stays readable.
-    ctx.font = '600 10px ' + MONO;
-    ctx.fillStyle = '#333a48';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let i = 5; i <= count; i += 5) {
-      const x = roadLeft + (i - 0.5) * laneW;
-      if (x < 12 || x > view.w - 12) continue;
-      ctx.fillText(String(i).padStart(2, '0'), x, 16);
+  }
+
+  function paintLanterns(now) {
+    if (!Art.hasLantern()) return;
+    const laneW = view.laneW;
+    const roadRight = view.x0 + lanes() * laneW - view.camX;
+    const roadLeft = view.x0 - view.camX;
+    const frame = Math.floor(now / 180);
+    const size = Math.max(14, laneW * 0.42);
+    const spots = [
+      [roadLeft - laneW * 0.42, view.h * 0.16],
+      [roadLeft - laneW * 0.42, view.h * 0.84],
+      [roadRight + laneW * 1.05, view.h * 0.16],
+      [roadRight + laneW * 1.05, view.h * 0.84],
+    ];
+    for (const spot of spots) {
+      if (spot[0] < -size || spot[0] > view.w + size) continue;
+      Art.lantern(ctx, spot[0], spot[1], size, frame + (spot[1] > view.h * 0.5 ? 2 : 0));
     }
-    void t;
   }
 
   function paintTags() {
@@ -330,80 +378,76 @@
     const roadLeft = view.x0 - view.camX;
     const crossed = crossedNow();
     const live = t.status === 'live';
+    const best = bestFor(t.difficultyId);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+
+    // The lane you are about to step into, tinted end to end.
+    if (live && crossed < lanes()) {
+      const x = roadLeft + crossed * laneW;
+      ctx.fillStyle = 'rgba(122, 162, 255, 0.10)';
+      ctx.fillRect(R(x), 0, laneW, view.h);
+    }
+
+    // A payout gutter along the bottom, drawn over the traffic so a car can
+    // never hide what a lane pays. This is the one piece of chrome on the stage.
+    const bandTop = view.h - 34;
+    ctx.fillStyle = 'rgba(9, 10, 14, 0.68)';
+    ctx.fillRect(0, bandTop, view.w, 34);
+    ctx.fillStyle = 'rgba(38, 42, 52, 0.95)';
+    ctx.fillRect(0, bandTop, view.w, 1);
+
+    const tagY = bandTop + 17;
+
+    // Your own best cash-out, marked on the road as a target, never as a tease.
+    if (best > 0) {
+      let bestLane = 0;
+      for (let i = 1; i <= lanes(); i++) {
+        if (Core.multiplier(t.difficultyId, i) <= best + 0.004) bestLane = i;
+      }
+      if (bestLane > 0) {
+        const bx = roadLeft + bestLane * laneW;
+        if (bx > -20 && bx < view.w + 20) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(122, 162, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 5]);
+          ctx.beginPath();
+          ctx.moveTo(R(bx) + 0.5, 8);
+          ctx.lineTo(R(bx) + 0.5, bandTop);
+          ctx.stroke();
+          ctx.restore();
+          ctx.font = '600 9px ' + MONO;
+          ctx.fillStyle = 'rgba(122, 162, 255, 0.8)';
+          ctx.fillText('BEST', R(bx) - 12, 14);
+        }
+      }
+    }
+
     for (let i = 1; i <= lanes(); i++) {
       const x = roadLeft + (i - 0.5) * laneW;
-      if (x < 18 || x > view.w - 18) continue;
+      // Keep clear of the mute button in the bottom-right corner.
+      if (x < 22 || x > view.w - 40) continue;
       const next = live && i === crossed + 1;
       const mult = Core.multiplier(t.difficultyId, i);
-      const tagY = view.h - 46;
 
       if (next) {
-        ctx.fillStyle = 'rgba(122, 162, 255, 0.10)';
-        ctx.fillRect(roadLeft + (i - 1) * laneW, 0, laneW, view.h);
-        ctx.fillStyle = 'rgba(122, 162, 255, 0.65)';
+        ctx.fillStyle = 'rgba(122, 162, 255, 0.75)';
         ctx.beginPath();
-        ctx.moveTo(x - 5, tagY - 27);
-        ctx.lineTo(x + 5, tagY - 27);
-        ctx.lineTo(x, tagY - 18);
+        ctx.moveTo(R(x) - 5, bandTop - 12);
+        ctx.lineTo(R(x) + 5, bandTop - 12);
+        ctx.lineTo(R(x), bandTop - 4);
         ctx.closePath();
         ctx.fill();
       }
 
       ctx.font = '600 ' + (next ? 11 : 10) + 'px ' + MONO;
-      ctx.fillStyle = next ? '#8db0ff' : '#4b5264';
-      ctx.fillText(shortMult(mult) + '\u00d7', x, tagY);
+      ctx.fillStyle = next ? '#8db0ff' : '#565d70';
+      ctx.fillText(shortMult(mult) + '\u00d7', R(x), R(tagY));
     }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-  }
-
-  function roundRect(x, y, w, h, r) {
-    const radius = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.arcTo(x + w, y, x + w, y + h, radius);
-    ctx.arcTo(x + w, y + h, x, y + h, radius);
-    ctx.arcTo(x, y + h, x, y, radius);
-    ctx.arcTo(x, y, x + w, y, radius);
-    ctx.closePath();
-  }
-
-  function paintCar(cx, cy, w, len, tone, dir, truck) {
-    const body = truck ? len * 1.55 : len;
-    const y = cy - body / 2;
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    roundRect(cx - w / 2 + 2, y + 3, w, body, w * 0.28);
-    ctx.fill();
-
-    ctx.fillStyle = tone;
-    roundRect(cx - w / 2, y, w, body, w * 0.28);
-    ctx.fill();
-
-    // Cabin glass, inset from the nose.
-    ctx.fillStyle = 'rgba(140, 155, 180, 0.28)';
-    const glassH = body * (truck ? 0.22 : 0.3);
-    const glassY = dir > 0 ? y + body * (truck ? 0.5 : 0.34) : y + body * (truck ? 0.28 : 0.36);
-    roundRect(cx - w * 0.32, glassY, w * 0.64, glassH, w * 0.14);
-    ctx.fill();
-
-    // Headlights at the leading end, tail lights at the trailing one.
-    const noseY = dir > 0 ? y + body - 4 : y + 4;
-    ctx.fillStyle = '#ffe9b8';
-    ctx.beginPath();
-    ctx.arc(cx - w * 0.3, noseY, Math.max(1.4, w * 0.06), 0, Math.PI * 2);
-    ctx.arc(cx + w * 0.3, noseY, Math.max(1.4, w * 0.06), 0, Math.PI * 2);
-    ctx.fill();
-
-    const tailY = dir > 0 ? y + 4 : y + body - 4;
-    ctx.fillStyle = 'rgba(224, 87, 77, 0.55)';
-    ctx.beginPath();
-    ctx.arc(cx - w * 0.3, tailY, Math.max(1.2, w * 0.05), 0, Math.PI * 2);
-    ctx.arc(cx + w * 0.3, tailY, Math.max(1.2, w * 0.05), 0, Math.PI * 2);
-    ctx.fill();
   }
 
   function paintCars(now) {
@@ -422,8 +466,8 @@
         if (travel < 0) travel += 1;
         const cy = travel * span - laneW * 1.5;
         if (cy < -laneW * 2 || cy > view.h + laneW * 2) continue;
-        const carLen = (car.truck ? 1.9 : 1.25) * laneW;
-        paintCar(x, cy, laneW * 0.52, carLen, car.tone, car.dir, car.truck);
+        const length = (car.truck ? 1.25 : 0.92) * laneW;
+        Art.car(ctx, x, cy, laneW * 0.34, length, car.tone, car.dir, car.truck);
       }
     }
   }
@@ -432,7 +476,7 @@
     const laneW = view.laneW;
     const roadLeft = view.x0 - view.camX;
     const crossed = crossedNow();
-    const scale = Math.max(0.6, Math.min(1.1, laneW / 64));
+    const height = birdHeight();
 
     let x = roadLeft + (crossed - 0.5) * laneW;
     let y = view.h * 0.52;
@@ -440,167 +484,99 @@
     let squashX = 1;
     let squashY = 1;
     let rot = 0;
-    let hurt = false;
 
     if (!reduceMotion()) y += Math.sin(now / 430) * 1.6;
 
     if (view.hop) {
-      const k = Math.min(1, (now - view.hop.start) / Math.max(1, view.hop.dur));
-      const ease = 1 - Math.pow(1 - k, 3);
-      const fromX = roadLeft + (view.hop.from - 0.5) * laneW;
-      const toX = roadLeft + (view.hop.to - 0.5) * laneW;
-      x = fromX + (toX - fromX) * ease;
-      lift = Math.sin(Math.PI * k) * laneW * 0.5;
-      squashY = 1 + Math.sin(Math.PI * k) * 0.16;
-      squashX = 1 - Math.sin(Math.PI * k) * 0.1;
+      const hop = view.hop;
+      const t = now - hop.start;
+      const crouch = reduceMotion() ? 1 : 60;
+      const jump = reduceMotion() ? 1 : 180;
+      const land = reduceMotion() ? 0 : 70;
+      const fromX = roadLeft + (hop.from - 0.5) * laneW;
+      const toX = roadLeft + (hop.to - 0.5) * laneW;
+
+      if (t < crouch) {
+        const c = t / crouch;
+        squashY = 1 - 0.2 * c;
+        squashX = 1 + 0.16 * c;
+        x = fromX;
+      } else if (t < crouch + jump) {
+        const k = (t - crouch) / jump;
+        const ease = 1 - Math.pow(1 - k, 3);
+        x = fromX + (toX - fromX) * ease;
+        lift = Math.sin(Math.PI * k) * laneW * 0.55;
+        const stretch = Math.sin(Math.PI * k);
+        squashY = 1 + 0.16 * stretch;
+        squashX = 1 - 0.12 * stretch;
+      } else {
+        const k = Math.min(1, Math.max(0, (t - crouch - jump) / Math.max(1, land)));
+        x = toX;
+        squashY = 0.8 + 0.2 * k;
+        squashX = 1.18 - 0.18 * k;
+      }
     }
 
     if (view.bust) {
-      const k = Math.min(1, (now - view.bust.start) / 520);
-      const dir = view.bust.lane % 2 === 0 ? 1 : -1;
-      hurt = true;
-      x += Math.sin(k * Math.PI) * 26 * dir;
-      y -= Math.sin(k * Math.PI) * 20;
-      lift += k * 8;
-      rot = k * 2.1 * dir;
-      squashX = 1 + k * 0.12;
-      squashY = 1 - k * 0.12;
+      const bust = view.bust;
+      const stop = reduceMotion() ? 0 : 70;
+      const k = Math.min(1, Math.max(0, (now - bust.start - stop) / 450));
+      const dir = bust.lane % 2 === 0 ? 1 : -1;
+      x += Math.sin(k * Math.PI) * 24 * dir;
+      y -= Math.sin(k * Math.PI) * 18;
+      lift += k * 6;
+      rot = k * 2.2 * dir;
+      squashX = 1 + k * 0.14;
+      squashY = 1 - k * 0.14;
     }
 
-    drawBird(x, y - lift, scale, squashX, squashY, rot, hurt);
-  }
+    // A shadow that stays on the asphalt while the bird is in the air.
+    const shadeW = Math.max(6, R(height * (0.46 - Math.min(0.22, lift / (view.laneW * 3)))));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+    ctx.fillRect(R(x - shadeW / 2), R(y + 2), shadeW, 2);
 
-  function drawBird(cx, cy, scale, squashX, squashY, rot, hurt) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot);
-    ctx.scale(scale * squashX, scale * squashY);
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.beginPath();
-    ctx.ellipse(0, 22, 17, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // legs
-    ctx.strokeStyle = '#e8a24a';
-    ctx.lineWidth = 2.4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-4, 11);
-    ctx.lineTo(-6, 19);
-    ctx.moveTo(-6, 19);
-    ctx.lineTo(-10, 19);
-    ctx.moveTo(5, 11);
-    ctx.lineTo(7, 19);
-    ctx.moveTo(7, 19);
-    ctx.lineTo(11, 19);
-    ctx.stroke();
-
-    // tail
-    ctx.fillStyle = '#d5dae6';
-    ctx.beginPath();
-    ctx.moveTo(-15, -3);
-    ctx.lineTo(-27, -11);
-    ctx.lineTo(-25, 3);
-    ctx.closePath();
-    ctx.fill();
-
-    // body
-    ctx.fillStyle = '#f2f4f9';
-    ctx.beginPath();
-    ctx.ellipse(0, 2, 17, 13.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // wing
-    ctx.fillStyle = '#d5dae6';
-    ctx.beginPath();
-    ctx.ellipse(-2, 3, 9.5, 7, -0.18, 0, Math.PI * 2);
-    ctx.fill();
-
-    // head
-    ctx.fillStyle = '#f2f4f9';
-    ctx.beginPath();
-    ctx.arc(12, -11, 9.6, 0, Math.PI * 2);
-    ctx.fill();
-
-    // comb
-    ctx.fillStyle = '#e0574d';
-    ctx.beginPath();
-    ctx.arc(9, -20.5, 3.5, 0, Math.PI * 2);
-    ctx.arc(13.5, -22, 4, 0, Math.PI * 2);
-    ctx.arc(17.8, -19.8, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // beak
-    ctx.fillStyle = '#e8a24a';
-    ctx.beginPath();
-    ctx.moveTo(19.5, -10.5);
-    ctx.lineTo(28, -7.8);
-    ctx.lineTo(19.5, -5.2);
-    ctx.closePath();
-    ctx.fill();
-
-    // wattle
-    ctx.fillStyle = '#e0574d';
-    ctx.beginPath();
-    ctx.arc(18.4, -3.8, 2.6, 0, Math.PI * 2);
-    ctx.fill();
-
-    // eye
-    ctx.strokeStyle = '#0b0e13';
-    ctx.fillStyle = '#0b0e13';
-    if (hurt) {
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(9.4, -14.6);
-      ctx.lineTo(15, -9.2);
-      ctx.moveTo(15, -14.6);
-      ctx.lineTo(9.4, -9.2);
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.arc(13.6, -11.8, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
+    Art.bird(ctx, state.bird, x, y - lift, height, {
+      squashX: squashX,
+      squashY: squashY,
+      rot: rot,
+    });
   }
 
   function paintBustCar(now) {
     if (!view.bust) return;
-    const k = Math.min(1, (now - view.bust.start) / 380);
+    const stop = reduceMotion() ? 0 : 70;
+    const k = Math.min(1, Math.max(0, (now - view.bust.start - stop) / 300));
     const laneW = view.laneW;
     const roadLeft = view.x0 - view.camX;
     const dir = view.bust.lane % 2 === 0 ? 1 : -1;
     const x = roadLeft + (view.bust.lane - 0.5) * laneW;
-    const y = view.h * 0.52 + (dir > 0 ? -1 : 1) * (1 - k) * laneW * 3.2;
-    paintCar(x, y, laneW * 0.6, laneW * 1.4, '#333a4b', dir, false);
+    const y = view.h * 0.52 + (dir > 0 ? -1 : 1) * (1 - k) * laneW * 2.6;
+    Art.car(ctx, x, y, laneW * 0.44, laneW * 1.05, '#3a4054', dir, false);
   }
 
-  function paintFeathers() {
+  function paintParticles() {
     for (const feather of view.feathers) {
-      ctx.save();
-      ctx.translate(feather.x, feather.y);
-      ctx.rotate(feather.rot);
-      ctx.globalAlpha = Math.max(0, feather.life);
-      ctx.fillStyle = '#f2f4f9';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 4.2, 1.7, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      Art.feather(ctx, feather.x, feather.y, feather.size, feather.life, feather.rot);
     }
-    ctx.globalAlpha = 1;
+    for (const coin of view.coins) {
+      Art.coin(ctx, coin.x, coin.y, coin.size, { rot: coin.rot, alpha: coin.life, pile: coin.pile });
+    }
   }
 
   function draw(now) {
-    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-    ctx.clearRect(0, 0, view.w, view.h);
+    const shake = view.trauma * view.trauma;
+    const ox = shake > 0.001 ? R((Math.random() * 2 - 1) * 5 * shake) : 0;
+    const oy = shake > 0.001 ? R((Math.random() * 2 - 1) * 4 * shake) : 0;
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, R(ox * view.dpr), R(oy * view.dpr));
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(-8, -8, view.w + 16, view.h + 16);
     paintGround();
-    paintTags();
+    paintLanterns(now);
     paintCars(now);
+    paintTags();
     paintBird(now);
     paintBustCar(now);
-    paintFeathers();
+    paintParticles();
     if (view.flash > 0.01) {
       ctx.fillStyle = 'rgba(224, 87, 77, ' + (view.flash * 0.3).toFixed(3) + ')';
       ctx.fillRect(0, 0, view.w, view.h);
@@ -609,57 +585,134 @@
 
   /* --------------------------------------------------------------- motion */
 
+  function spawnDust(lane) {
+    if (reduceMotion()) return;
+    const laneW = view.laneW;
+    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
+    const y = view.h * 0.52;
+    for (let i = 0; i < 4; i++) {
+      view.feathers.push({
+        x: x + (i - 1.5) * 6,
+        y: y - 2,
+        vx: (i - 1.5) * 0.35,
+        vy: -0.4 - Math.random() * 0.5,
+        size: 1,
+        rot: 0,
+        spin: 0,
+        life: 1,
+        dust: true,
+      });
+    }
+  }
+
+  function spawnFeathers(lane) {
+    const laneW = view.laneW;
+    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
+    const y = view.h * 0.52;
+    for (let i = 0; i < 14; i++) {
+      view.feathers.push({
+        x: x + (Math.random() - 0.5) * 14,
+        y: y + (Math.random() - 0.5) * 12,
+        vx: (Math.random() - 0.5) * 0.55,
+        vy: -Math.random() * 0.9 - 0.15,
+        size: 2,
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.006,
+        life: 1,
+        dust: false,
+      });
+    }
+  }
+
+  function spawnCoins(lane, big) {
+    const laneW = view.laneW;
+    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
+    const y = view.h * 0.52 - birdHeight() * 0.6;
+    const count = big ? 12 : 7;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+      view.coins.push({
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * (0.5 + Math.random() * 0.5),
+        vy: Math.sin(angle) * (0.5 + Math.random() * 0.4) - 0.7,
+        rot: 0,
+        spin: (Math.random() - 0.5) * 0.004,
+        life: 1,
+        size: Math.max(10, laneW * 0.3),
+        pile: big && i % 3 === 0,
+      });
+    }
+  }
+
   function update(dt, now) {
     const target = clampCam(probe(crossedNow()) - view.w * 0.34);
     view.camTarget = target;
     view.camX += (target - view.camX) * Math.min(1, dt / 110);
 
-    if (view.hop && now - view.hop.start >= Math.max(1, view.hop.dur)) view.hop = null;
-    if (view.bust && now - view.bust.start > 700) view.bust = null;
+    if (view.hop) {
+      const hop = view.hop;
+      const total = (reduceMotion() ? 2 : 60 + 180) + 4;
+      if (!hop.landed && now - hop.start >= total) {
+        hop.landed = true;
+        spawnDust(hop.to);
+      }
+      if (now - hop.start >= total + (reduceMotion() ? 0 : 80)) view.hop = null;
+    }
+    if (view.bust && now - view.bust.start > 760) view.bust = null;
 
+    view.trauma = Math.max(0, view.trauma - dt / 380);
     if (view.flash > 0) view.flash = Math.max(0, view.flash - dt / 420);
 
-    for (const feather of view.feathers) {
-      feather.vy += 0.045 * dt * 0.06;
-      feather.x += feather.vx * dt * 0.06;
-      feather.y += feather.vy * dt * 0.06;
-      feather.rot += feather.spin * dt * 0.002;
-      feather.life -= dt * 0.0009;
+    for (const p of view.feathers) {
+      p.vy += (p.dust ? 0.01 : 0.02) * dt * 0.06;
+      p.x += p.vx * dt * 0.06;
+      p.y += p.vy * dt * 0.06;
+      p.rot += p.spin * dt;
+      p.life -= dt * (p.dust ? 0.0028 : 0.0011);
     }
-    if (view.feathers.length) view.feathers = view.feathers.filter((f) => f.life > 0);
+    if (view.feathers.length) view.feathers = view.feathers.filter((p) => p.life > 0);
+
+    for (const c of view.coins) {
+      c.vy += 0.028 * dt * 0.06;
+      c.x += c.vx * dt * 0.06;
+      c.y += c.vy * dt * 0.06;
+      c.rot += c.spin * dt;
+      c.life -= dt * 0.0011;
+    }
+    if (view.coins.length) view.coins = view.coins.filter((c) => c.life > 0);
+
+    // The points counter counts up rather than snapping: cheap, and it makes a
+    // cash-out feel like it landed.
+    const real = state.table.balance;
+    if (view.pointsShown !== real) {
+      const gap = real - view.pointsShown;
+      if (Math.abs(gap) < 0.8) view.pointsShown = real;
+      else view.pointsShown += gap * Math.min(1, dt / 130);
+      const shown = Core.formatPoints(view.pointsShown);
+      if (els.points.textContent !== shown) els.points.textContent = shown;
+      if (els.sbPoints.textContent !== shown) els.sbPoints.textContent = shown;
+    }
   }
 
   function loop(now) {
     view.raf = window.requestAnimationFrame(loop);
     const busy =
-      state.table.status === 'live' || view.hop || view.bust || view.feathers.length > 0 || view.flash > 0;
+      state.table.status === 'live' ||
+      view.hop ||
+      view.bust ||
+      view.feathers.length > 0 ||
+      view.coins.length > 0 ||
+      view.trauma > 0 ||
+      view.flash > 0 ||
+      view.pointsShown !== state.table.balance;
     // ~60fps while the road is live, ~18fps when it is only ambient. The canvas
-    // is small and the draw is a few dozen paths, so this stays cheap on a
-    // laptop; nothing is recomputed, only painted.
+    // is small and the draw is a few dozen rects and sprites.
     if (now - view.last < (busy ? 16 : 55)) return;
     const dt = Math.min(64, now - view.last || 16);
     view.last = now;
     update(dt, now);
     draw(now);
-  }
-
-  function makeFeathers(lane) {
-    const laneW = view.laneW;
-    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
-    const y = view.h * 0.52;
-    const out = [];
-    for (let i = 0; i < 14; i++) {
-      out.push({
-        x: x + (Math.random() - 0.5) * 16,
-        y: y + (Math.random() - 0.5) * 14,
-        vx: (Math.random() - 0.5) * 12,
-        vy: -Math.random() * 7 - 1,
-        rot: Math.random() * Math.PI,
-        spin: (Math.random() - 0.5) * 6,
-        life: 1,
-      });
-    }
-    return out;
   }
 
   /* ---------------------------------------------------------------- sound */
@@ -698,15 +751,31 @@
     osc.stop(start + duration + 0.02);
   }
 
-  function sfx(kind) {
+  /* A pentatonic run: each lane is one step up, so a long crossing is a melody. */
+  const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  function hopNote(lane) {
+    const step = SCALE[Math.min(SCALE.length - 1, Math.max(0, lane - 1))];
+    return 330 * Math.pow(2, step / 12);
+  }
+
+  function sfx(kind, value) {
     if (state.muted) return;
-    if (kind === 'hop') tone(430 + Math.random() * 60, 0.07, 'square', 0.035);
+    if (kind === 'hop') tone(hopNote(value || 1), 0.075, 'square', 0.03);
+    else if (kind === 'land') tone(180, 0.05, 'sine', 0.02);
     else if (kind === 'cash') {
-      tone(660, 0.1, 'triangle', 0.05);
-      window.setTimeout(() => tone(990, 0.16, 'triangle', 0.045), 90);
+      tone(660, 0.09, 'triangle', 0.05);
+      window.setTimeout(function () {
+        tone(990, 0.14, 'triangle', 0.045);
+      }, 85);
+    } else if (kind === 'best') {
+      window.setTimeout(function () {
+        tone(1320, 0.16, 'triangle', 0.04);
+      }, 200);
     } else if (kind === 'bust') {
-      tone(180, 0.3, 'sawtooth', 0.055, 58);
-      window.setTimeout(() => tone(120, 0.22, 'square', 0.03, 60), 40);
+      tone(180, 0.3, 'sawtooth', 0.05, 58);
+      window.setTimeout(function () {
+        tone(110, 0.22, 'square', 0.028, 55);
+      }, 55);
     }
   }
 
@@ -716,6 +785,7 @@
     els.roads.innerHTML = Core.DIFFICULTIES.map(function (d) {
       const clear = Core.clearSteps(d.id);
       const max = Core.multiplier(d.id, clear);
+      const best = bestFor(d.id);
       return (
         '<button class="road" type="button" role="radio" data-road="' +
         d.id +
@@ -728,10 +798,30 @@
         ' lanes</span>' +
         '<span class="road-max">' +
         shortMult(max) +
-        '\u00d7</span>' +
+        '\u00d7' +
+        (best ? ' \u00b7 pb ' + shortMult(best) : '') +
+        '</span>' +
         '</button>'
       );
     }).join('');
+  }
+
+  function buildBirds() {
+    if (!els.birds) return;
+    els.birds.innerHTML = '';
+    Art.BIRDS.forEach(function (entry) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'bird';
+      button.dataset.bird = entry.id;
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', String(entry.id === state.bird));
+      button.setAttribute('aria-label', entry.label);
+      button.title = entry.label;
+      button.appendChild(Art.birdCanvas(entry.id, 40));
+      els.birds.appendChild(button);
+    });
+    els.birdName.textContent = Art.birdById(state.bird).label;
   }
 
   function renderOdds() {
@@ -757,7 +847,8 @@
         })
         .join('');
       state.oddsRows = els.oddsBody.querySelectorAll('tr');
-      els.oddsSummary.textContent = rows.length + ' lanes · max ' + shortMult(rows[rows.length - 1].multiplier) + '\u00d7';
+      els.oddsSummary.textContent =
+        rows.length + ' lanes \u00b7 max ' + shortMult(rows[rows.length - 1].multiplier) + '\u00d7';
     }
     const at = t.round ? t.round.crossed : 0;
     for (const row of state.oddsRows) {
@@ -772,6 +863,7 @@
     const crossed = crossedNow();
     const clear = t.clearSteps;
 
+    view.pointsShown = t.balance;
     els.points.textContent = Core.formatPoints(t.balance);
     els.sbPoints.textContent = Core.formatPoints(t.balance);
     els.sbRoad.textContent = d.name;
@@ -785,28 +877,34 @@
       btn.setAttribute('aria-checked', on ? 'true' : 'false');
       btn.tabIndex = on ? 0 : -1;
     }
+    if (els.birds) {
+      for (const btn of els.birds.children) {
+        btn.setAttribute('aria-checked', btn.dataset.bird === state.bird ? 'true' : 'false');
+      }
+    }
 
     els.roadNote.innerHTML =
       '<b>' +
       d.name +
-      '</b> · ' +
+      '</b> \u00b7 ' +
       clear +
-      ' lanes · first ' +
+      ' lanes \u00b7 first ' +
       Core.formatPercent(Core.stepOdds(t.difficultyId, 1), 0) +
-      ' safe · last ' +
+      ' safe \u00b7 last ' +
       Core.formatPercent(Core.stepOdds(t.difficultyId, clear), 0) +
       ' safe';
 
     els.cross.disabled = !live && !t.canPlace();
     if (live) {
-      els.cross.textContent = 'Cross ▸ ' + shortMult(Core.multiplier(t.difficultyId, crossed + 1)) + '\u00d7';
+      els.cross.textContent =
+        'Cross \u25b8 ' + shortMult(Core.multiplier(t.difficultyId, crossed + 1)) + '\u00d7';
     } else {
       els.cross.textContent = 'Cross';
     }
 
     els.cash.disabled = !live;
     els.cash.dataset.live = live ? '1' : '0';
-    els.cash.textContent = live ? 'Cash out · ' + Core.formatPoints(t.currentPayout()) : 'Cash out';
+    els.cash.textContent = live ? 'Cash out \u00b7 ' + Core.formatPoints(t.currentPayout()) : 'Cash out';
 
     els.sbMult.textContent = live
       ? Core.formatMultiplier(t.round.multiplier) + '\u00d7'
@@ -814,17 +912,16 @@
         ? Core.formatMultiplier(state.lastMult) + '\u00d7'
         : '\u2014';
     els.sbNext.textContent =
-      Core.formatPercent(Core.stepOdds(t.difficultyId, live ? Math.min(crossed + 1, clear) : 1), 0) +
-      ' safe';
+      Core.formatPercent(Core.stepOdds(t.difficultyId, live ? Math.min(crossed + 1, clear) : 1), 0) + ' safe';
     els.sbCrossed.textContent = crossed + ' / ' + clear;
 
     els.hint.classList.toggle('gone', t.nonce > 0);
 
     // Fairness
     const seed = t.serverSeed;
-    els.factSeed.textContent = seed.slice(0, 12) + '…';
+    els.factSeed.textContent = seed.slice(0, 12) + '\u2026';
     els.factSeed.title = seed;
-    els.factHash.textContent = t.serverSeedHash.slice(0, 16) + '…';
+    els.factHash.textContent = t.serverSeedHash.slice(0, 16) + '\u2026';
     els.factHash.title = t.serverSeedHash;
     els.factNonce.textContent = String(t.round ? t.round.nonce : t.nonce);
     if (els.clientSeed.value !== t.clientSeed) els.clientSeed.value = t.clientSeed;
@@ -850,8 +947,11 @@
     els.statNet.textContent = (net > 0 ? '+' : '') + Core.formatPoints(net);
     els.statNet.style.color = net > 0 ? 'var(--text)' : net < 0 ? 'var(--muted)' : '';
     els.statBest.textContent = s.bestMultiplier
-      ? Core.formatMultiplier(s.bestMultiplier) + '\u00d7 · ' + Core.formatPoints(s.bestPayout)
+      ? Core.formatMultiplier(s.bestMultiplier) + '\u00d7 \u00b7 ' + Core.formatPoints(s.bestPayout)
       : '\u2014';
+    const done = Math.min(state.roundsThisSession, SESSION_GOAL);
+    els.statGoal.textContent =
+      done + ' / ' + SESSION_GOAL + ' rounds' + (done >= SESSION_GOAL ? ' \u2014 a good place to stop' : '');
 
     renderOdds();
   }
@@ -864,6 +964,8 @@
     const cars = reveal.hazardLanes.length
       ? 'Cars this road: lane ' + reveal.hazardLanes.join(', ') + '.'
       : 'That road had no car at all.';
+    const best = bestFor(t.difficultyId);
+    let isBest = false;
 
     els.card.classList.toggle('lost', kind === 'bust');
     els.card.classList.toggle('won', kind !== 'bust');
@@ -873,18 +975,34 @@
       els.rKicker.textContent = 'Roasted';
       els.rMult.textContent = Core.formatMultiplier(reached) + '\u00d7';
       els.rLine.textContent = '\u2212' + Core.formatPoints(t.round.bet) + ' points';
+      els.rNext.textContent = best
+        ? 'Your best cash-out here is ' + Core.formatMultiplier(best) + '\u00d7.'
+        : 'Nothing banked on this road yet.';
       els.rNote.textContent = 'Hit in lane ' + res.crossed + '. ' + cars;
     } else if (kind === 'auto') {
+      isBest = recordBest(t.difficultyId, res.multiplier);
       els.rKicker.textContent = 'Far kerb';
       els.rMult.textContent = Core.formatMultiplier(res.multiplier) + '\u00d7';
       els.rLine.textContent =
         '+' + Core.formatPoints(res.payout - t.round.bet) + ' points, all ' + t.clearSteps + ' lanes clear';
+      els.rNext.textContent = isBest ? 'New best cash-out on this road.' : '';
       els.rNote.textContent = cars;
     } else {
+      isBest = recordBest(t.difficultyId, res.multiplier);
       els.rKicker.textContent = 'Cashed out';
       els.rMult.textContent = Core.formatMultiplier(res.multiplier) + '\u00d7';
       els.rLine.textContent = '+' + Core.formatPoints(res.payout - t.round.bet) + ' points';
+      els.rNext.textContent = isBest
+        ? 'New best cash-out on this road.'
+        : best
+          ? 'Your best here is ' + Core.formatMultiplier(best) + '\u00d7.'
+          : '';
       els.rNote.textContent = 'After ' + res.crossed + ' of ' + t.clearSteps + ' lanes. ' + cars;
+    }
+
+    if (isBest) {
+      sfx('best');
+      view.trauma = Math.min(1, view.trauma + 0.12);
     }
 
     els.result.hidden = false;
@@ -914,27 +1032,31 @@
         from: res.crossed - 1,
         to: res.crossed,
         start: performance.now(),
-        dur: reduceMotion() ? 1 : 240,
+        landed: false,
       };
-      sfx('hop');
+      sfx('hop', res.crossed);
+      view.trauma = Math.min(1, view.trauma + 0.03);
       if (res.auto) {
         state.lastMult = res.multiplier;
+        state.roundsThisSession += 1;
         sfx('cash');
-        const delay = reduceMotion() ? 0 : 300;
+        spawnCoins(res.crossed, true);
+        view.trauma = Math.min(1, view.trauma + 0.18);
         window.setTimeout(function () {
           openResult(res, 'auto');
-        }, delay);
+        }, reduceMotion() ? 0 : 320);
       }
     } else {
       state.lastMult = Core.multiplier(t.difficultyId, Math.max(0, res.crossed - 1));
+      state.roundsThisSession += 1;
       view.flash = 1;
+      view.trauma = Math.min(1, view.trauma + 0.62);
       view.bust = { lane: res.crossed, start: performance.now() };
-      view.feathers = makeFeathers(res.crossed);
+      spawnFeathers(res.crossed);
       sfx('bust');
-      const delay = reduceMotion() ? 0 : 640;
       window.setTimeout(function () {
         openResult(res, 'bust');
-      }, delay);
+      }, reduceMotion() ? 0 : 700);
     }
 
     writeStore();
@@ -947,25 +1069,20 @@
     const res = t.cashOut();
     if (!res.ok) return;
     state.lastMult = res.multiplier;
+    state.roundsThisSession += 1;
     sfx('cash');
+    spawnCoins(res.crossed, res.multiplier >= 2);
+    view.trauma = Math.min(1, view.trauma + 0.14);
     openResult(res, 'cash');
     writeStore();
     render();
-  }
-
-  function nudgeBet() {
-    const t = state.table;
-    if (t.bet > t.balance) {
-      els.betNote.textContent = 'more than you hold';
-      els.bet.focus({ preventScroll: true });
-    }
   }
 
   /* ---------------------------------------------------------------- wiring */
 
   buildRoads();
   els.mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
-  els.mute.textContent = state.muted ? '∅' : '♪';
+  els.mute.textContent = state.muted ? '\u2205' : '\u266a';
   els.mute.setAttribute('aria-label', state.muted ? 'Sound off' : 'Sound on');
 
   els.bet.addEventListener('input', function () {
@@ -1016,6 +1133,7 @@
     const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
     if (keys.indexOf(event.key) === -1) return;
     event.preventDefault();
+    if (state.table.status === 'live') return;
     const ids = Core.DIFFICULTIES.map(function (d) {
       return d.id;
     });
@@ -1030,6 +1148,20 @@
     const nextButton = els.roads.querySelector('[data-road="' + nextId + '"]');
     if (nextButton) nextButton.focus();
   });
+
+  if (els.birds) {
+    els.birds.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-bird]');
+      if (!button) return;
+      state.bird = button.dataset.bird;
+      els.birdName.textContent = Art.birdById(state.bird).label;
+      for (const btn of els.birds.children) {
+        btn.setAttribute('aria-checked', btn.dataset.bird === state.bird ? 'true' : 'false');
+      }
+      writeStore();
+      draw(performance.now());
+    });
+  }
 
   els.cross.addEventListener('click', doCross);
   els.cash.addEventListener('click', doCash);
@@ -1047,7 +1179,7 @@
     state.muted = !state.muted;
     els.mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
     els.mute.setAttribute('aria-label', state.muted ? 'Sound off' : 'Sound on');
-    els.mute.textContent = state.muted ? '∅' : '♪';
+    els.mute.textContent = state.muted ? '\u2205' : '\u266a';
     writeStore();
   });
 
@@ -1070,8 +1202,15 @@
 
   resize();
   render();
-  nudgeBet();
   view.raf = window.requestAnimationFrame(loop);
+
+  // The sprite pack is optional: if it is not on disk, art.js falls back to its
+  // own pixel art and everything here behaves identically.
+  Art.load({ code: forceCodeArt }).then(function () {
+    buildBirds();
+    render();
+    draw(performance.now());
+  });
 
   /* A seam for the browser checks in tools/, so a check can drive the real game
      instead of guessing at timings. */
@@ -1091,6 +1230,14 @@
       resize();
       render();
     },
+    setBird: function (id) {
+      state.bird = id;
+      render();
+      draw(performance.now());
+    },
+    usingAtlas: function () {
+      return Art.usingAtlas();
+    },
     state: function () {
       const t = state.table;
       return {
@@ -1103,6 +1250,11 @@
         payout: t.round ? t.round.payout : 0,
         overlay: !els.result.hidden,
         cars: t.round ? t.round.road.filter(Boolean).length : 0,
+        bird: state.bird,
+        best: state.best,
+        atlas: Art.usingAtlas(),
+        coins: view.coins.length,
+        feathers: view.feathers.length,
       };
     },
   };
