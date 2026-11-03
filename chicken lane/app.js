@@ -27,6 +27,10 @@
   const params = new URLSearchParams(window.location.search);
   const forceCodeArt = params.get('art') === 'code';
 
+  /* Bumped whenever a round ends or a new one starts, so a result card that is
+     still on a timer cannot appear over the round that replaced it. */
+  let resultToken = 0;
+
   const $ = (id) => document.getElementById(id);
   const els = {
     points: $('points'),
@@ -958,6 +962,16 @@
 
   /* --------------------------------------------------------------- result */
 
+  /* A crash and its card are a pair. If a new round starts before the card has
+     appeared, that card must never arrive on top of the new road. */
+  function scheduleResult(res, kind, delay) {
+    const token = (resultToken += 1);
+    window.setTimeout(function () {
+      if (token !== resultToken) return;
+      openResult(res, kind);
+    }, delay);
+  }
+
   function openResult(res, kind) {
     const t = state.table;
     const reveal = res.revealed || t.reveal() || { hazardLanes: [] };
@@ -1023,6 +1037,13 @@
         els.betNote.textContent = 'more than you hold';
         return;
       }
+      // A fresh road carries none of the last round's wreckage: no lingering
+      // red flash, no tumbling bird, no card still waiting on its timer.
+      resultToken += 1;
+      view.bust = null;
+      view.flash = 0;
+      view.feathers = [];
+      view.hop = null;
     }
     const res = t.cross();
     if (!res.ok) return;
@@ -1042,9 +1063,7 @@
         sfx('cash');
         spawnCoins(res.crossed, true);
         view.trauma = Math.min(1, view.trauma + 0.18);
-        window.setTimeout(function () {
-          openResult(res, 'auto');
-        }, reduceMotion() ? 0 : 320);
+        scheduleResult(res, 'auto', reduceMotion() ? 0 : 320);
       }
     } else {
       state.lastMult = Core.multiplier(t.difficultyId, Math.max(0, res.crossed - 1));
@@ -1054,9 +1073,7 @@
       view.bust = { lane: res.crossed, start: performance.now() };
       spawnFeathers(res.crossed);
       sfx('bust');
-      window.setTimeout(function () {
-        openResult(res, 'bust');
-      }, reduceMotion() ? 0 : 700);
+      scheduleResult(res, 'bust', reduceMotion() ? 0 : 700);
     }
 
     writeStore();
@@ -1073,6 +1090,7 @@
     sfx('cash');
     spawnCoins(res.crossed, res.multiplier >= 2);
     view.trauma = Math.min(1, view.trauma + 0.14);
+    resultToken += 1; // cancel any card still pending from an earlier crash
     openResult(res, 'cash');
     writeStore();
     render();
