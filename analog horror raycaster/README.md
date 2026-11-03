@@ -207,7 +207,6 @@ strongest single value. Buying the same non-stackable item twice is refused.
 | `raycast.js`           | DOM-free core: `World`, `generateLevel` (`DEN` tile, `den`), `castRay`, `castColumns`, `fogFactor`, `Atmosphere`, `Player`, `Stalker` (+`setHome`/`update`), `solvePath`/`isDeadEnd`/`farthestDeadEnd`, `ITEMS`/`applyItems`/`canBuy`, `placeCollectibles`/`collectNear`, `Explored`, `depthSettings`; works in browser and Node |
 | `app.js`               | Scene rendering, the dither and analog-horror post pass, the minimap, the shop UI, procedural audio, input, and the game loop                                                                          |
 | `test.js`              | Node.js tests for the core                                                                                                                                                                          |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors                                                                                                                                        |
 
 ## Tests
 

@@ -87,7 +87,6 @@ reproduces a run exactly; the app only uses `Math.random()` to pick fresh seeds.
 | `sand.js` | DOM-free core (`Sand`, materials, gravity, pressure, leveling); works in browser and Node |
 | `app.js` | Pixel-buffer rendering, simulation loop, brush, and controls |
 | `test.js` | Node.js tests for the core |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

@@ -140,8 +140,8 @@ clearer.
 3. Update [`API.md`](API.md) for shared framework contracts and [`README.md`](README.md)
    for user-facing features or controls.
 4. Run the app and inspect the relevant sketch after changes to visual behavior.
-5. At task completion, update the repository [`context.md`](../context.md) if
-   the new Markdown contains durable guidance future coding tasks must read.
+5. At task completion, fold anything durable the new Markdown introduced back
+   into `README.md` or `API.md`, so the next reader finds it where they look.
 
 The project intentionally runs directly from `file://`. Do not add a JSDoc
 generation pipeline or dependency unless explicitly requested.

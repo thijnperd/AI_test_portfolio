@@ -35,7 +35,6 @@ Each project folder should ideally contain:
 - source files and configuration relevant to the project
 - assets, generated outputs, or data if needed
 - tests, notes, or examples if relevant
-- a markdown file named `(ai instructions).md` for project-specific AI guidance
 
 ## Repository conventions
 
@@ -52,36 +51,19 @@ This repository is meant to hold separate, self-contained projects rather than o
 - Prefer readable names over vague placeholders such as `project1`, `misc`, or `stuff`.
 - If a task is ambiguous, check the nearby folder structure and the relevant project README before making assumptions.
 
-## AI / Copilot guidance
+## Shared design language
 
-The repository includes a startup instruction file at [ai_startup_instructions.md](ai_startup_instructions.md). This is the main file to read at the start of a session, because it tells the assistant how to find the right project and where to look for additional instruction files.
+The visual language for every project here — tokens, layout, project voices,
+and anti-patterns — is [DESIGN.md](DESIGN.md). Read it before styling or
+restyling any interface.
 
-The shared entry point is [AGENTS.md](AGENTS.md): tools such as Freebuff /
-Codebuff load it automatically and it points to the startup instructions and
-this repo's [context.md](context.md) index. AI assistants should also read the
-repo-level guidance in [.github/copilot-instructions.md](.github/copilot-instructions.md),
-then check for local instruction files such as `(ai instructions).md` in the
-relevant project folder before making changes.
+## Publishing
 
-The shared visual language for every project here — tokens, layout, project
-voices, and anti-patterns — is [DESIGN.md](DESIGN.md). Read it before styling
-or restyling any interface.
-
-Every AI session appends one line to [log.md](log.md) before it finishes: the
-date and time, the model name, and what it did. The rule is in
-[ai_startup_instructions.md](ai_startup_instructions.md).
-
-This repository is also **published publicly on GitHub** as
+This repository is **published publicly on GitHub** as
 [`thijnperd/AI_test_portfolio`](https://github.com/thijnperd/AI_test_portfolio)
-(`origin`, branch `main`). A finished task is a pushed task: append the `log.md`
-line, then commit and push. Because the repository is public, check what you are
-publishing first — no secrets, credentials, or personal data, and data files
-such as `Wiekentwie/WieKentWie.xlsm` stay local and git-ignored.
-
-Reusable skills live in [`.agents/skills/`](.agents/skills) as
-`<name>/SKILL.md` (Agent Skills format). Skill-aware tools discover them
-automatically and expose each as `/skill:<name>`; otherwise read the matching
-file directly.
+(`origin`, branch `main`). Because it is public, check what you are publishing
+first — no secrets, credentials or personal data, and data files such as
+`Wiekentwie/WieKentWie.xlsm` stay local and git-ignored.
 
 ## Current projects
 

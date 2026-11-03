@@ -12,9 +12,9 @@ instructions take precedence over the standalone p5.js artifact workflow below:
 - Use the existing AlgoArt Canvas 2D framework, `Art.register`, and its seeded
   helpers. Do not create a standalone p5.js viewer or add a p5.js dependency
   unless the user explicitly requests a separate p5.js artifact.
-- Read the project `README.md`, `(ai instructions).md`, and the applicable
-  specialized skills. For finished sketches, follow `JSDOC.md`, register the
-  script in `index.html`, and keep documentation in sync.
+- Read the project `README.md` and the applicable specialized skills. For
+  finished sketches, follow `JSDOC.md`, register the script in `index.html`,
+  and keep documentation in sync.
 - Preserve this repository's folder structure, controls, and browser-only
   architecture. Use `Source material/` for prototypes and `sketches/` for
   finished registered work.

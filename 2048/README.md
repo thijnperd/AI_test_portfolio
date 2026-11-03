@@ -160,7 +160,6 @@ celebrate a win.
 | `ai.js` | DOM-free AI core (`AiLib`): the heuristic, the expectimax search, and a headless `playGame` for measuring it; works in browser and Node |
 | `app.js` | Board rendering, keyboard input, records, the ladder, the overlay, and the visible AI mode |
 | `test.js` | Node.js tests for the core and the AI |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## The AI player
 

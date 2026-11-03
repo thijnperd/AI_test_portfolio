@@ -65,7 +65,6 @@ steps the same way. The app only uses `Math.random()` to choose a fresh seed.
 | `boids.js` | DOM-free flocking core (`Flock`, seeded RNG, steering); works in browser and Node |
 | `app.js` | Canvas rendering, animation loop, controls, and keyboard shortcuts |
 | `test.js` | Node.js tests for the core |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

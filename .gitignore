@@ -31,3 +31,19 @@ chicken lane/Assets/
 .buff-src/
 .claude/skills/
 agent/
+
+# Local agent tooling and instruction files. These guide the tools used on this
+# machine; the published repository holds the projects and their own docs.
+.freebuff/
+.freebuff-startup.json
+.claude/
+agent/
+.buff-*
+.agents/
+AGENTS.md
+ai_startup_instructions.md
+context.md
+log.md
+skills-lock.json
+.github/copilot-instructions.md
+(ai instructions).md

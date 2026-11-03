@@ -70,7 +70,6 @@ maze generator and solver/
 ├── app.js       # rendering, animation loop, UI wiring
 ├── test.js      # Node tests for the core
 ├── README.md
-└── (ai instructions).md   # how to use and expand this project
 ```
 
 ## Tests

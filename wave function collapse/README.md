@@ -77,7 +77,6 @@ map exactly; the app only uses `Math.random()` to pick fresh seeds.
 | `wfc.js` | DOM-free core (`WFCLib`): tile sets, adjacency, the solver, validation; works in browser and Node |
 | `app.js` | Canvas rendering, animation loop, controls, and keyboard shortcuts |
 | `test.js` | Node.js tests for the core |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

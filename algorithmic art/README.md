@@ -195,8 +195,7 @@ files but are not loaded by `index.html`.
 experiments (prototypes, tutorial ports, throwaway ideas). Nothing in it is
 loaded by the app. Periodically review it, port the best / most worked-out
 sketches into `sketches/`, then clear it. The full workflow for using this
-folder and creating new sketches is documented in
-[`Source material/(ai instructions).md`](Source%20material/(ai%20instructions).md).
+folder and creating new sketches is under *Adding a sketch* below.
 
 ## Adding a sketch
 

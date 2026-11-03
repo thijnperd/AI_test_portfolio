@@ -88,7 +88,6 @@ The tests verify selected pattern properties on appropriately sized grids.
 | `life.js` | DOM-free simulation core and pattern definitions; works in browser and Node |
 | `app.js` | Canvas rendering, animation, controls, and pointer/keyboard interaction |
 | `test.js` | Node.js tests for the simulation core |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

@@ -212,7 +212,6 @@ above if you do not.
 | `style.css` | The house tokens, the console rail, the playfield palette, states, and the phone contraction. |
 | `test.js` | Node tests for the core. Not UI tests. |
 | `README.md` | This file. |
-| `(ai instructions).md` | What future work must not break. |
 
 ## Validation
 

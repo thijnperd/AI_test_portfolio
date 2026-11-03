@@ -202,4 +202,5 @@ reference aligned with the implementation; see [`JSDOC.md`](JSDOC.md).
 nothing in it is expected to be clean. When an experiment is strong enough to
 become a real sketch, port it into `sketches/` with the full sketch contract, add
 the JSDoc banner, register it in `index.html`, and clear the scratch copy.
-The workflow for that is documented in `Source material/(ai instructions).md`.
+The workflow for that is the same one described under *Adding a sketch* in
+`README.md`.

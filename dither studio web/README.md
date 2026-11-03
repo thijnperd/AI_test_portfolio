@@ -302,7 +302,6 @@ around 240 ms per frame at 720×404 in video mode.
 | `test.js` | Node tests for the core |
 | `README.md` | This file |
 | `SOURCES.md` | Where every feature, table and palette came from |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

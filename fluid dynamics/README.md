@@ -71,7 +71,6 @@ point, and the app only uses `Math.random()` for fresh seeds and ambient noise.
 | `fluid.js` | DOM-free core (`FluidLib`): the grid, projection, advection, vorticity, buoyancy, splats; works in browser and Node |
 | `app.js` | Dye rendering, the animation loop, pointer interaction, and controls |
 | `test.js` | Node.js tests for the core |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

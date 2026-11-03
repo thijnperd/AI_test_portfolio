@@ -86,5 +86,4 @@ bash tools/check.sh "dither studio web/index.html" --size 1024x768 --touch --dpr
 - Run from the repository root so relative project paths resolve.
 - The JSON summary is machine-readable; `ok` is `true` only when there are no
   console errors, no page errors, and every `--expect` matched.
-- Prefer this over reading HTML when a task says "test/verify/demo the app" —
-  see the `webapp-testing` skill in `.agents/skills/webapp-testing/`.
+- Prefer this over reading HTML when a task says "test/verify/demo the app".

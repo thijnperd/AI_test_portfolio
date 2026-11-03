@@ -35,7 +35,6 @@ from providers whose availability date has not passed.
 | `Installatie-Excel.md` | Dutch install/usage guide, migration notes, and limitations. |
 | `tests/edge_cases.ps1` | Executable specification — drives real Excel via COM and checks the edge cases. |
 | `tests/dismiss_dialog.ps1` | Helper that auto-dismisses the module's modal `MsgBox` dialogs during tests. |
-| `(ai instructions).md` | Guidance for AI assistants and contributors working on the module. |
 
 > **The workbook is not committed to this repository.** `WieKentWie.xlsm` holds
 > real contact data and document metadata, so it is git-ignored. To run the app,

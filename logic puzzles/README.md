@@ -125,7 +125,6 @@ generated puzzle, being unique, always walks to exactly its own answer.
 | `binairo.js` | DOM-free binary-puzzle core (`BinairoLib`): the three rules as propagation and validation, solver, solution counting, generator |
 | `app.js` | The DOM board, stepping, keyboard input and the status bar |
 | `test.js` | Node.js tests for both cores |
-| `(ai instructions).md` | Project-specific guidance for AI assistants and contributors |
 
 ## Tests
 

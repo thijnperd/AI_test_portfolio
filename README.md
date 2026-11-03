@@ -46,14 +46,9 @@ is verified in the browser.)
 Fourteen independent projects, plus the shared documents and tooling that keep
 them consistent:
 
-- [`ai_startup_instructions.md`](ai_startup_instructions.md) — the workflow for
-  AI assistants working here, and [`AGENTS.md`](AGENTS.md) for tools that load
-  it automatically.
-- [`context.md`](context.md) — the index of read-before-coding documents.
 - [`DESIGN.md`](DESIGN.md) — the shared visual language and the performance
   budget every project must respect: *a dark instrument panel for a gallery at
   night.*
-- [`log.md`](log.md) — the model activity log.
 - `tools/` — the shared Playwright harness used to verify anything
   browser-facing; Playwright is installed globally, never as a project
   dependency.
@@ -65,7 +60,6 @@ them consistent:
   in its own app window with launchers (the repository root), and an Electron
   desktop app released as a Windows `.exe` (`desktop/`). This portfolio keeps
   the web version; the desktop build lives only in the app repository.
-- `.agents/skills/` — reusable agent skills, pinned in `skills-lock.json`.
 
 ## Verification
 
