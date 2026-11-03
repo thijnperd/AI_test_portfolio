@@ -1,8 +1,8 @@
 # Chicken Lane
 
-*A dark instrument panel, driven at night.* A free, points-only browser game: cross
-a road of night traffic one lane at a time, watch the multiplier climb, and cash
-out before a car finds you.
+*A dark instrument panel, driven at night.* A free, points-only browser game:
+cross a farm track one lane at a time while the herds wander past, watch the
+multiplier climb, and cash out before one of them finds you.
 
 Open `index.html`. Nothing to install, no build step, no dependencies.
 
@@ -27,9 +27,10 @@ turkey, peacock, penguin, cassowary and emu — and every one crosses at exactly
 the same odds.
 
 The whole road for the round is fixed before your first step, so nothing you do
-can move a car. The payout gutter along the bottom of the road shows what each
-remaining lane pays, the next lane is tinted because that is the decision in
-front of you, and a dashed line marks your own best cash-out on this road.
+can move an animal into your lane. The payout rail down the right edge shows what
+each remaining lane pays (it is painted over the herds, so traffic can never hide
+a number), the next lane is tinted because that is the decision in front of you,
+and a dashed rule marks your own best cash-out on this road.
 
 | Key | What it does |
 |---|---|
@@ -44,11 +45,11 @@ This is a **step-multiplier** game, the genre Rainbet sells as *Chicken Cross*,
 Stake as *Chicken* and InOut as *Chicken Road*. The mechanic is not the same as a
 crash game: there is no clock, and every step waits for you.
 
-The road has **25 lanes**, and `m` of them hold a car (1, 3, 5 or 10, by road).
-Before the first step all 25 are set. Because a lane you survive is used up while
-every car stays put, **the walk is a draw without replacement** — which is why
-every step is riskier than the last, and why the final lane is the worst one in
-the game.
+The road has **25 lanes**, and `m` of them hold a hazard — a loose animal
+(1, 3, 5 or 10, by road). Before the first step all 25 are set. Because a lane you
+survive is used up while every hazard stays put, **the walk is a draw without
+replacement** — which is why every step is riskier than the last, and why the
+final lane is the worst one in the game.
 
 That gives the whole ladder in two lines:
 
@@ -122,9 +123,11 @@ fair payout is your stake back.
   [1-800-522-4700](https://www.ncpgambling.org/help-treatment/).
 
 It is also honest about the genre's central illusion: the traffic is
-**decoration**. Cars cruise at a speed set by the road, and players often assume
-timing matters. It does not — the outcome of every lane was decided before you
-placed the bet. The Fairness panel says so, and can prove it.
+**decoration**. Animals wander every lane at a speed set by the road, and players
+often assume timing matters. It does not — the outcome of every lane was decided
+before you placed the bet. The herd is drawn on every lane whatever the road, so
+it can never hint at where a hazard is. The Fairness panel says so, and can prove
+it.
 
 ## Fairness
 
@@ -134,9 +137,11 @@ Every round is derived from three values:
 road = SHA-256 chain of  serverSeed : clientSeed : nonce
 ```
 
-The 32-byte digest is cut into eight floats, and lane *n* holds a car when its
-float lands above that lane's survival probability. The whole road is drawn at
-the moment you place the bet — never during the round.
+The digest is turned into a stream of floats, and those floats draw **`m`
+distinct lanes out of all 25** — one draw per hazard, without replacement. The
+whole road is drawn at the moment you place the bet, never during the round, so a
+round holds exactly the `m` hazards its road is named for and every lane you never
+reached can still be checked after you settle.
 
 - The **server seed hash** is on screen before you play; the seed itself is
   revealed after every round, with the nonce, the material and the lane numbers
@@ -153,18 +158,29 @@ under you", and that claim is exactly true.
 
 ## Art
 
-Pixel art on a 32 px grid, drawn nearest-neighbour and scaled by whole numbers, because
-half-pixel scaling is what makes a pixel scene look soft. Asphalt bands, lane dashes,
-a hatched kerb, a chequered far kerb with the golden egg, four kinds of car, a payout
-gutter along the bottom, and a bird that crouches, stretches and squashes when it hops.
+The stage is **side-on**: the track runs across the screen, the bird climbs it lane
+by lane, and the herds charge left and right along the lanes between a grass verge
+at the bottom and the far verge with its finish strip and golden egg at the top.
+Side-on is the view the packs are actually drawn for — every animal in them is a
+profile — and it makes traffic unmistakable at a glance instead of a dark shape on
+dark tarmac.
 
-The birds, the coins and the flickering lanterns come from the **32rogues** pack by
-**Seth Boyles** — a generous free pack with one catch worth knowing about: its licence
+Pixel art on a 32 px grid, drawn nearest-neighbour and scaled by whole numbers, because
+half-pixel scaling is what makes a pixel scene look soft. The track and verges are tiled
+from the pack's 16 px ground sheet, with its grass tufts, flowers and boulders scattered
+along the verges; lane dashes, alternating lane bands, the chequered finish strip and the
+payout rail are drawn in code. A bird that crouches, stretches and squashes when it hops,
+and animals that step along their lane as they graze.
+
+The birds, the coins, the lanterns and every animal in the herds come from the
+**32rogues** pack by **Seth Boyles**; the ground tiles and the verge props come from
+**free_pixel_16_woods**. Both have one catch worth knowing about: the 32rogues licence
 allows use in commercial and non-commercial projects but **forbids redistribution**,
-and this repository is public. So the pack itself is `.gitignore`d
-(`chicken lane/Assets/`) and is not in git, and everything that needs a sprite has a
-hand-drawn stand-in in `art.js`, rendered from a 16x16 character grid and tinted eight
-ways to keep the picker useful.
+and this repository is public. So the packs themselves are `.gitignore`d
+(`chicken lane/Assets/`) and are not in git, and everything that needs a sprite has a
+hand-drawn stand-in in `art.js` — the bird from a 16x16 character grid tinted nine
+ways, the animals from a blocky quadruped tinted per species — so the layout, sizes
+and feel are identical without the packs.
 
 That means the game is complete either way. With the pack on disk you get its rooster,
 duck, penguin and the rest, real coin sprites and lantern light. In a fresh clone, on
@@ -172,9 +188,9 @@ GitHub Pages, or on anyone else's machine the fallback art takes over and the la
 sizes and feel are identical — only the pixels differ. Both are one URL apart: open
 `index.html` and `index.html?art=code`.
 
-Cars, road markings, kerbs, dust and feathers are this project's own — there are no
-vehicles in the pack. Sound is two oscillators and an envelope through the Web Audio
-API, so there is no audio file anywhere.
+Lane markings, the finish strip, the payout rail, dust and feathers are this project's
+own. Sound is two oscillators and an envelope through the Web Audio API, so there is no
+audio file anywhere.
 
 The pack's licence also rules out NFT/blockchain use and use in generative-AI or
 machine-learning projects. Read it before taking this game anywhere commercial:
@@ -187,7 +203,7 @@ above if you do not.
 |---|---|
 | `core.js` | The rules: the 25-lane model, the ladder, SHA-256, the road generator, the round engine and the points arithmetic. No DOM. Exports `CluckCore` for the browser and for Node. |
 | `app.js` | The browser half: the rail, keyboard, sound, game feel (hop, hit-stop, shake, particles), the result card, and the `window.ChickenLane` seam the browser checks drive. |
-| `art.js` | Every pixel: the atlas loader, the bird catalogue, coins, lanterns, cars, particles, and the hand-drawn fallback used when the sprite pack is absent. |
+| `art.js` | Every pixel: the atlas loader, the bird catalogue, the herd catalogue, the tiled ground and verge props, coins, lanterns, particles, and the hand-drawn fallbacks used when the packs are absent. |
 | `index.html` | Page structure and script order (`core.js`, then `app.js`). |
 | `style.css` | The house tokens, the console rail, the playfield palette, states, and the phone contraction. |
 | `test.js` | Node tests for the core. Not UI tests. |

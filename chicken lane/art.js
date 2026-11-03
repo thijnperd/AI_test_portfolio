@@ -1,18 +1,22 @@
 /* art.js — every pixel Chicken Lane draws.
  *
- * The playfield is pixel art on a 32 px grid. Three sprite sheets are used from
- * the "32rogues" pack (Seth Boyles) when it is present on disk:
+ * The stage is side-on, so the sprites the packs actually contain are the ones
+ * used: profiles. Two packs supply the art, both optional:
  *
- *   animals.png        row 14 — chicken, rooster, duck, goose, swan, turkey,
- *                      guineafowl, peacock; row 13 — penguin, cassowary, emu
- *   items.png          row 24 — coins (single, small stack, large stack, purse)
- *   animated-tiles.png row 7  — a four-frame lantern
+ *   32rogues (Seth Boyles)
+ *     animals.png          rows 9-15 — cattle, horses, buffalo, yaks, boars,
+ *                          sheep and goats, plus the bird picker on rows 13-14
+ *     items.png             row 24 — coins
+ *     animated-tiles.png    row 7 — a four-frame lantern
  *
- * That pack's licence does not permit redistribution, so the sheets are NOT in
- * the repository (see .gitignore and README). When they are missing, every
- * sprite here falls back to a hand-drawn stand-in of the same size and pose, so
- * the layout, hitboxes, camera and feel are identical either way — only the
- * pixels differ. Nothing in this file requires the pack to work.
+ *   free_pixel_16_woods
+ *     16 px ground tiles and single-cell props (grass, packed earth, tufts,
+ *     flowers, boulders), used for the verges and the track itself.
+ *
+ * Neither pack may be redistributed, and this repository is public, so `Assets/`
+ * is gitignored (see README). Everything here has a hand-drawn stand-in of the
+ * same size, so layout, hitboxes, camera and feel are identical without them —
+ * only the pixels differ. Nothing in this file requires the packs to work.
  *
  * Rules for everything in here:
  *   - nearest-neighbour, always: imageSmoothingEnabled = false
@@ -28,11 +32,14 @@ var Art = (function () {
     animals: 'Assets/32rogues-0.5.0/32rogues/animals.png',
     items: 'Assets/32rogues-0.5.0/32rogues/items.png',
     anim: 'Assets/32rogues-0.5.0/32rogues/animated-tiles.png',
+    woods: 'Assets/pixel_16_woods v2 free/free_pixel_16_woods.png',
   };
 
   const CELL = 32;
+  const TILE = 16;
 
-  /* Cell coordinates, read off the sheets with a labelled grid. */
+  /* Cell coordinates, read off the sheets with a labelled grid and checked
+     against the packs' own index files. */
   const BIRDS = [
     { id: 'rooster', label: 'Rooster', sheet: 'animals', cx: 1, cy: 14 },
     { id: 'chicken', label: 'Chicken', sheet: 'animals', cx: 0, cy: 14 },
@@ -45,10 +52,33 @@ var Art = (function () {
     { id: 'emu', label: 'Emu', sheet: 'animals', cx: 3, cy: 13 },
   ];
 
+  /* The traffic. Farm animals in profile, all facing right on the sheet, each
+     with a coat colour for the hand-drawn stand-in. */
+  const HERDS = [
+    { id: 'cow', label: 'Cow', cx: 0, cy: 9, coat: '#a9552c' },
+    { id: 'horse', label: 'Horse', cx: 1, cy: 9, coat: '#8d5a37' },
+    { id: 'buffalo', label: 'Buffalo', cx: 2, cy: 10, coat: '#71707f' },
+    { id: 'yak', label: 'Yak', cx: 3, cy: 10, coat: '#8f4a22' },
+    { id: 'reindeer', label: 'Reindeer', cx: 1, cy: 10, coat: '#3f5a6e' },
+    { id: 'boar', label: 'Boar', cx: 7, cy: 9, coat: '#8a6a4a' },
+    { id: 'ram', label: 'Ram', cx: 3, cy: 15, coat: '#6f8896' },
+  ];
+
   const COIN_CELL = { cx: 0, cy: 24 };
   const COIN_PILE_CELL = { cx: 2, cy: 24 };
   const LANTERN_ROW = 7;
   const LANTERN_FRAMES = 4;
+
+  /* Solid ground fills and single-cell props from the woods sheet. */
+  const GROUND_CELLS = {
+    grass: { cx: 11, cy: 3, tint: '#4f8f34' },
+    dirt: { cx: 7, cy: 3, tint: '#b98a5e' },
+  };
+  const PROP_CELLS = {
+    tuft: { cx: 14, cy: 8 },
+    flower: { cx: 16, cy: 3 },
+    rock: { cx: 14, cy: 2 },
+  };
 
   const state = {
     loaded: false,
@@ -57,9 +87,8 @@ var Art = (function () {
   };
 
   /* ------------------------------------------------------- hand-drawn stand-in
-   * A 16x16 chicken, drawn from characters so it is editable as text. Used only
-   * when the pack is absent; the shape and pose match the 32 px sprite closely
-   * enough that nothing in the layout shifts.
+   * Drawn from characters so it is editable as text. Used only when a pack is
+   * absent; sizes match the 32 px sprites closely enough that nothing shifts.
    */
   const BIRD_ART = [
     '................',
@@ -95,6 +124,26 @@ var Art = (function () {
     '#e6d9f2', '#c9e8d2', '#f2c9d4', '#d9e2f7',
   ];
 
+  /* A blocky quadruped in profile, facing right, for the no-pack case. */
+  const BEAST_ART = [
+    '................',
+    '..........hhh...',
+    '..HHHHHHHHHHH...',
+    '.HHHHHHHHHHHHHH.',
+    '.HHHHHHHHHHHHHH.',
+    '.HHHHHHHHHHHHkk.',
+    '.HHHHHHHHHHHHHH.',
+    '.HHHHHHHHHHHHH..',
+    '..HHHHHHHHHHH...',
+    '..HHHHHHHHHH....',
+    '..HH..HH..HH....',
+    '..HH..HH..HH....',
+    '..HH..HH..HH....',
+    '..kk..kk..kk....',
+    '................',
+    '................',
+  ];
+
   /* --------------------------------------------------------------- loading */
 
   function loadImage(src) {
@@ -110,7 +159,7 @@ var Art = (function () {
     });
   }
 
-  /** Resolves once the pack has been tried. Never rejects. */
+  /** Resolves once the packs have been tried. Never rejects. */
   function load(opts) {
     const force = opts && opts.code;
     if (force) {
@@ -235,6 +284,131 @@ var Art = (function () {
     return canvas;
   }
 
+  /* ----------------------------------------------------------------- herds */
+
+  function herdById(id) {
+    for (const herd of HERDS) if (herd.id === id) return herd;
+    return HERDS[0];
+  }
+
+  /**
+   * Draw one animal standing on (cx, feetY), facing the way it is walking.
+   * The sheets draw every animal facing right, so a leftward walk is a flip.
+   */
+  function beast(ctx, id, cx, feetY, height, dir) {
+    const entry = herdById(id);
+    const img = sheet('animals');
+    const facing = dir < 0 ? -1 : 1;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(R(cx), R(feetY));
+    if (facing < 0) ctx.scale(-1, 1);
+
+    if (img) {
+      const scale = Math.max(1, Math.round(height / CELL));
+      const s = CELL * scale;
+      ctx.drawImage(
+        img,
+        entry.cx * CELL,
+        entry.cy * CELL,
+        CELL,
+        CELL,
+        R(-s / 2),
+        -s,
+        s,
+        s
+      );
+    } else {
+      const scale = Math.max(1, Math.round(height / 16));
+      const s = 16 * scale;
+      const px = s / 16;
+      for (let row = 0; row < 16; row++) {
+        const line = BEAST_ART[row];
+        for (let col = 0; col < 16; col++) {
+          const glyph = line[col];
+          if (glyph === '.') continue;
+          ctx.fillStyle = glyph === 'k' ? '#241a14' : glyph === 'h' ? '#e6d6ae' : entry.coat;
+          ctx.fillRect(
+            R(-s / 2 + col * px),
+            R(-s + row * px),
+            Math.max(1, Math.ceil(px)),
+            Math.max(1, Math.ceil(px))
+          );
+        }
+      }
+    }
+
+    ctx.restore();
+  }
+
+  /* ----------------------------------------------------------------- ground */
+
+  const tileCache = new Map();
+
+  function tileCanvas(kind, scale) {
+    const key = kind + ':' + scale;
+    if (tileCache.has(key)) return tileCache.get(key);
+    const spec = GROUND_CELLS[kind] || GROUND_CELLS.grass;
+    const img = sheet('woods');
+    const canvas = document.createElement('canvas');
+    canvas.width = TILE * scale;
+    canvas.height = TILE * scale;
+    const c = canvas.getContext('2d');
+    c.imageSmoothingEnabled = false;
+    if (img) {
+      c.drawImage(img, spec.cx * TILE, spec.cy * TILE, TILE, TILE, 0, 0, canvas.width, canvas.height);
+    } else {
+      c.fillStyle = spec.tint;
+      c.fillRect(0, 0, canvas.width, canvas.height);
+      // A little grain, so the fallback is a surface rather than a flat wash.
+      c.fillStyle = 'rgba(0, 0, 0, 0.12)';
+      const step = Math.max(2, scale * 4);
+      for (let y = 0; y < canvas.height; y += step) {
+        for (let x = (y / step) % 2 ? 0 : step / 2; x < canvas.width; x += step) {
+          c.fillRect(x, y, scale, scale);
+        }
+      }
+    }
+    tileCache.set(key, canvas);
+    return canvas;
+  }
+
+  const patternCache = new Map();
+
+  /** A repeating fill for a ground kind. Returns null if patterns are missing. */
+  function ground(ctx, kind, scale) {
+    const key = kind + ':' + scale;
+    if (patternCache.has(key)) return patternCache.get(key);
+    const pattern = ctx.createPattern ? ctx.createPattern(tileCanvas(kind, scale), 'repeat') : null;
+    patternCache.set(key, pattern);
+    return pattern;
+  }
+
+  /** A single-cell prop (tuft, flower, boulder) standing on (cx, bottomY). */
+  function prop(ctx, kind, cx, bottomY, height) {
+    const img = sheet('woods');
+    const spec = PROP_CELLS[kind];
+    if (!img || !spec) return false;
+    const scale = Math.max(1, Math.round(height / TILE));
+    const s = TILE * scale;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      img,
+      spec.cx * TILE,
+      spec.cy * TILE,
+      TILE,
+      TILE,
+      R(cx - s / 2),
+      R(bottomY - s),
+      s,
+      s
+    );
+    ctx.restore();
+    return true;
+  }
+
   /* ------------------------------------------------------------------ coins */
 
   function coin(ctx, x, y, size, opts) {
@@ -295,62 +469,6 @@ var Art = (function () {
     return !!sheet('anim');
   }
 
-  /* ------------------------------------------------------------------- cars */
-
-  /* Muted body tones, snapped against the night asphalt. */
-  const CAR_TONES = ['#2b3140', '#333a4b', '#3a2f38', '#2c3a3c', '#3b3630'];
-
-  function car(ctx, cx, cy, width, length, tone, dir, truck) {
-    const w = Math.max(8, R(width));
-    const len = Math.max(14, R(length));
-    const x = R(cx - w / 2);
-    const y = R(cy - len / 2);
-    const body = tone || CAR_TONES[0];
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // contact shadow, offset so the car sits on the asphalt
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.fillRect(x + 2, y + 3, w, len);
-
-    // one pixel of outline keeps the silhouette legible at night
-    ctx.fillStyle = '#0b0d12';
-    ctx.fillRect(x - 1, y - 1, w + 2, len + 2);
-    ctx.fillStyle = body;
-    ctx.fillRect(x, y, w, len);
-
-    // roof highlight down the middle, so the body is not a flat slab
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.09)';
-    ctx.fillRect(x + R(w * 0.38), y + 3, Math.max(1, R(w * 0.24)), len - 6);
-
-    // two glass panes with a body-coloured pillar between them
-    const glass = Math.max(0, R(w * 0.17));
-    const winW = Math.max(2, w - glass * 2);
-    const winLen = Math.max(3, R(len * (truck ? 0.11 : 0.16)));
-    const frontY = dir > 0 ? y + R(len * 0.6) : y + R(len * 0.17);
-    const backY = dir > 0 ? y + R(len * 0.17) : y + R(len * 0.63);
-    ctx.fillStyle = 'rgba(150, 172, 205, 0.42)';
-    ctx.fillRect(x + glass, frontY, winW, winLen);
-    ctx.fillRect(x + glass, backY, winW, winLen);
-
-    // bonnet seam
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(x + 1, dir > 0 ? y + len - R(len * 0.24) : y + R(len * 0.23), w - 2, 1);
-
-    // headlights at the nose, tail lights at the back
-    const noseY = dir > 0 ? y + len - 3 : y + 1;
-    const tailY = dir > 0 ? y + 1 : y + len - 3;
-    ctx.fillStyle = '#ffe9b8';
-    ctx.fillRect(x + 1, noseY, 2, 2);
-    ctx.fillRect(x + w - 3, noseY, 2, 2);
-    ctx.fillStyle = 'rgba(224, 87, 77, 0.85)';
-    ctx.fillRect(x + 1, tailY, 2, 2);
-    ctx.fillRect(x + w - 3, tailY, 2, 2);
-
-    ctx.restore();
-  }
-
   /* ------------------------------------------------------------------ misc */
 
   /** A chunky 1-2 px dust puff, drawn as rects so it stays pixel-crisp. */
@@ -378,8 +496,9 @@ var Art = (function () {
 
   return {
     CELL,
+    TILE,
     BIRDS,
-    CAR_TONES,
+    HERDS,
     BIRD_INK,
     FALLBACK_TINTS,
     load,
@@ -387,10 +506,13 @@ var Art = (function () {
     birdCanvas,
     birdById,
     birdIndex,
+    beast,
+    herdById,
+    ground,
+    prop,
     coin,
     lantern,
     hasLantern,
-    car,
     dust,
     feather,
     usingAtlas: function () {

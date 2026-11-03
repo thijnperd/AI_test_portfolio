@@ -56,6 +56,7 @@ Check this catalog on every task. Files live at
 | `impeccable` | The task designs, redesigns, critiques, audits, or polishes a frontend/UI/UX. Not for backend-only tasks. |
 | `thermo-nuclear-code-quality-review` | The user asks for an especially strict or deep maintainability/code-quality review. |
 | `webapp-testing` | The user asks to test, verify, or demo a web app in a real browser. Not for unit tests. |
+| `game-playtest` | Running a browser-game playtest or frontend QA pass: boot, exercise the main verbs, screenshot representative states, review HUD against playfield, report findings by severity. |
 | `frontend-design` | Building or styling a user-facing interface that needs a deliberate visual direction. |
 | `skill-creator` | Creating, improving, or evaluating an agent skill, or researching/installing community skills. |
 | `handoff` | Deliberately ending or splitting a session and preparing a structured handoff. |

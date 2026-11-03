@@ -37,6 +37,12 @@
       "skillPath": "skills/find-animation-opportunities/SKILL.md",
       "computedHash": "c6673fadf179233cc0a52c978ea9acc9b82a210665c749307a571a86ed4c092e"
     },
+    "game-playtest": {
+      "source": "openai/plugins",
+      "sourceType": "github",
+      "skillPath": "plugins/game-studio/skills/game-playtest/SKILL.md",
+      "computedHash": "e82b0f02e5e8fedca0ae96fe58b16c4028861e1700c4fa69f45a246df1ac5bf1"
+    },
     "improve-animations": {
       "source": "emilkowalski/skills",
       "sourceType": "github",

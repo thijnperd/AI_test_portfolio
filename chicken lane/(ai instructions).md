@@ -1,8 +1,8 @@
 # AI instructions for the Chicken Lane project
 
-A free, points-only browser game: cross 25 lanes of night traffic, cash out
-before a car finds you. Dependency-free, openable from `file://`, with a DOM-free
-core under Node tests.
+A free, points-only browser game: cross a farm track of 25 lanes while the herds
+wander, cash out before one of them finds you. Dependency-free, openable from
+`file://`, with a DOM-free core under Node tests.
 
 ## Before working
 
@@ -18,7 +18,7 @@ core under Node tests.
 |---|---|
 | `core.js` | `LANES`, `RTP`, `DIFFICULTIES`, the survival/multiplier maths, `ladder`, SHA-256, `floatStream`, `makeRoad`, the `Table` round engine, formatting. **No DOM.** |
 | `app.js` | Panel rendering, input, sound, game feel (hop, hit-stop, shake, particles, best marker), the result card, the `window.ChickenLane` check seam. |
-| `art.js` | Every pixel: atlas loading, the bird catalogue, coins, lanterns, cars, particles, and the hand-drawn fallback. |
+| `art.js` | Every pixel: atlas loading, the bird and herd catalogues, tiled ground and verge props, coins, lanterns, particles, and the hand-drawn fallbacks. |
 | `index.html` | Structure and script order. |
 | `style.css` | Tokens, rail, playfield palette, states, phone contraction. |
 | `test.js` | Node tests for the core only. |
@@ -30,7 +30,7 @@ core under Node tests.
    must not be: a declared ladder is how a game quietly stops returning what it
    claims. If you add a road, give it a hazard count and the ladder follows.
 2. **`clearSteps = LANES − hazards`, and the road is exactly that long.** Not 25
-   lanes; not 25 minus something else. The per-lane car probability is
+   lanes; not 25 minus something else. The per-lane hazard probability is
    `stepOdds(id, n) = (25 − m − n + 1) / (25 − n + 1)`, which telescopes to
    `1 / C(25, m)` across the whole road — that telescoping is the published
    top-multiplier numbers. Change the road length or the odds and the ladder
@@ -68,13 +68,19 @@ core under Node tests.
 10. **The feel layer may not touch the outcome.** Hit-stop, shake, squash, particles
     and the hop melody are presentation only; the round is settled by the time
     `cross()` returns. Never let an animation or a sound decide what happened.
+11. **The herds are decoration and must stay uninformative.** Which lane holds a
+    hazard is secret until you step on it, so the ambient animals cannot depend on
+    the round: `laneHerd(lane, road)` is seeded from the lane and the road only,
+    never from `table.round.road`. Put an animal in a hazard lane differently and the
+    game is solved before the first click. The stage is side-on because the packs
+    draw animals in profile — do not rotate a profile sprite to fake a top-down view.
 
 ## The house style
 
 Chrome is the shared instrument panel: the `:root` tokens copied verbatim, one
 accent, hairlines, mono type, no shadows. The playfield is the one authored
-exception — it has its own small palette (asphalt, sodium white, a red comb,
-`--hazard` as a *signal*) because a white bird on grey asphalt has to read at
+exception — it has its own small palette (packed earth, grass, sodium white, a red
+comb, `--hazard` as a *signal*) because a white bird on a dirt track has to read at
 forty pixels. `--hazard` appears only where something is dangerous or lost. Never
 let a second hue into the chrome.
 
@@ -83,7 +89,7 @@ let a second hue into the chrome.
 One small canvas, `devicePixelRatio` capped at 2. The render loop is frame-capped
 — about 60fps while a round is live, about 18fps when the road is only ambient —
 and it paints a few dozen paths; nothing is recomputed per frame. Car layout is
-computed once per lane per road and cached in `carCache`. Any new per-frame work
+computed once per lane per road and cached in `herdCache`. Any new per-frame work
 must be a paint, not a computation, and `prefers-reduced-motion` must keep
 disabling the hop, the spin and the idle bob.
 

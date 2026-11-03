@@ -245,17 +245,35 @@ var CluckCore = (function () {
   }
 
   /**
-   * The round's road: one entry per lane you have to cross, `true` meaning a car
-   * is parked in that lane. The chance of a car is forced by the model above —
+   * The round's road: one entry per lane you have to cross, `true` meaning a
+   * hazard sits in that lane. The chance of one is forced by the model above —
    * it starts at (L - m) / L and tightens as the road runs out, which is exactly
    * why the last lane is the worst one. The whole road is drawn here, before the
    * first step, so no click can move a car.
    */
   function makeRoad(serverSeed, clientSeed, nonce, id) {
     const clear = clearSteps(id);
+    const hazards = difficulty(id).hazards;
     const next = floatStream(serverSeed + ':' + clientSeed + ':' + nonce);
+
+    // Draw `hazards` distinct lanes out of all LANES without replacement, so a
+    // round really does hold exactly the m hazards the road is named for (and the
+    // reveal can never claim more than the odds table does). Drawing each lane at
+    // its conditional probability would give the same survival law — the ladder is
+    // identical — but a road holding a different number of hazards, which is a lie
+    // the player can see after settling.
+    const positions = [];
+    for (let lane = 1; lane <= LANES; lane++) positions.push(lane);
+    for (let i = 0; i < hazards; i++) {
+      const pick = i + Math.floor(next() * (LANES - i));
+      const held = positions[i];
+      positions[i] = positions[pick];
+      positions[pick] = held;
+    }
+
+    const struck = positions.slice(0, hazards);
     const road = [];
-    for (let i = 0; i < clear; i++) road.push(next() >= stepOdds(id, i + 1));
+    for (let lane = 1; lane <= clear; lane++) road.push(struck.indexOf(lane) !== -1);
     return road;
   }
 

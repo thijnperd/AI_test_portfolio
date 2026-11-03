@@ -3,12 +3,13 @@
  * THE WORLD: the house instrument panel, driven at night. A dark console rail on
  * the left counts points and odds in mono; the playfield on the right is the
  * exhibit, and it is the one thing allowed a palette of its own, because a white
- * bird on grey asphalt has to read as a bird at forty pixels.
+ * bird on a dirt track has to read as a bird at forty pixels.
  *
  * So: chrome = the shared tokens, exactly one accent, hairlines, no shadows.
- * Playfield and mascot = their own small palette (asphalt, sodium amber, a red
- * comb). `--hazard` is a signal, not a second accent: it appears only where the
- * game is telling you something is dangerous or lost, never as decoration.
+ * Playfield and mascot = their own small palette (packed earth, grass, sodium
+ * amber, a red comb). `--hazard` is a signal, not a second accent: it appears
+ * only where the game is telling you something is dangerous or lost, never as
+ * decoration.
  */
 
 :root {
@@ -25,15 +26,11 @@
   /* signals, not accents */
   --hazard: #e0574d;
 
-  /* playfield only */
+  /* playfield only: a dirt track between two grass verges */
   --well: #0b0c10;
-  --asphalt: #14161c;
-  --asphalt-2: #171a21;
-  --lane-line: #3b4150;
-  --kerb: #1f232c;
-  --car-a: #2b3140;
-  --car-b: #333a4b;
-  --car-c: #3a2f38;
+  --track: #6b4f34;
+  --verge: #20351a;
+  --track-line: rgba(250, 246, 232, 0.34);
   --lamp: #ffe9b8;
   --bird: #f2f4f9;
   --bird-shade: #d5dae6;
@@ -500,8 +497,12 @@ kbd {
   left: 14px;
   top: 10px;
   margin: 0;
+  /* A pill, because the hint sits over the track and the herds wander under it. */
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(9, 10, 14, 0.72);
   font-size: 11px;
-  color: #7b8298;
+  color: #9aa2b8;
   pointer-events: none;
   transition: opacity 240ms ease;
 }

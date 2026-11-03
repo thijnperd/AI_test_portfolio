@@ -156,14 +156,17 @@
 
   /* -------------------------------------------------------------- canvas */
 
+  /* The stage is side-on: the track runs across, the bird climbs lane by lane and
+     the herds charge along each lane. Side-on is the view the sprite packs are
+     drawn for — their animals are profiles — and it makes traffic read at a
+     glance instead of looking like dark blocks on dark tarmac. */
   const view = {
     w: 0,
     h: 0,
     dpr: 1,
-    laneW: 60,
-    x0: 70,
-    worldW: 1600,
-    camX: 0,
+    laneH: 64,
+    worldH: 0,
+    camY: 0,
     camTarget: 0,
     hop: null,
     bust: null,
@@ -179,16 +182,25 @@
   const ctx = els.canvas.getContext('2d');
   const lanes = () => state.table.clearSteps;
   const crossedNow = () => (state.table.round ? state.table.round.crossed : 0);
-  const probe = (crossed) => view.x0 + (crossed - 0.5) * view.laneW;
+
+  /* World coordinates: y grows downward, the far kerb is 0 and the near kerb the
+     player starts from is the bottom of the world. Lane n is the far one. */
+  const laneTop = (i) => (lanes() - i + 1) * view.laneH;
+  const laneBottom = (i) => (lanes() - i + 2) * view.laneH;
+  const feetY = (crossed) =>
+    crossed <= 0
+      ? (lanes() + 1.86) * view.laneH
+      : laneBottom(Math.min(crossed, lanes())) - view.laneH * 0.18;
+  const sy = (worldY) => R(worldY - view.camY);
+  const birdX = () => R(view.w * 0.46);
 
   function clampCam(target) {
-    const min = -view.laneW * 0.7;
-    const max = Math.max(min, view.worldW - view.w + view.laneW * 0.5);
-    return Math.min(max, Math.max(min, target));
+    const max = Math.max(0, view.worldH - view.h);
+    return Math.min(max, Math.max(0, target));
   }
 
   function birdHeight() {
-    return Math.max(30, Math.min(104, view.laneW * 0.95));
+    return Math.max(26, Math.min(96, view.laneH * 0.92));
   }
 
   function resize() {
@@ -201,13 +213,12 @@
     els.canvas.height = R(view.h * dpr);
     els.canvas.style.width = view.w + 'px';
     els.canvas.style.height = view.h + 'px';
-    // About five and a half lanes on screen: chunky sprites, and you can still
-    // see what the next three steps pay.
-    view.laneW = Math.max(40, Math.min(104, R(view.w / 5.8)));
-    view.x0 = R(view.laneW * 1.15);
-    view.worldW = view.x0 + lanes() * view.laneW + view.laneW * 1.9;
-    view.camTarget = clampCam(probe(crossedNow()) - view.w * 0.34);
-    view.camX = view.camTarget;
+    // Five and a half lanes on screen: chunky animals, and you can still see
+    // what the next few steps pay.
+    view.laneH = Math.max(44, Math.min(112, R(view.h / 5.6)));
+    view.worldH = (lanes() + 2) * view.laneH;
+    view.camTarget = clampCam(feetY(crossedNow()) - view.h * 0.74);
+    view.camY = view.camTarget;
     ctx.imageSmoothingEnabled = false;
     draw(performance.now());
   }
@@ -225,37 +236,41 @@
     };
   }
 
-  const TRAFFIC = {
-    easy: { cars: 1, speed: 0.85 },
-    medium: { cars: 2, speed: 1.0 },
-    hard: { cars: 2, speed: 1.2 },
-    daredevil: { cars: 3, speed: 1.5 },
+  /* Ambient herds: which animals wander a lane, and how fast. Decoration only —
+     every lane has animals whatever the road, so the herd can never hint at where
+     the hidden hazards are. */
+  const HERD = {
+    easy: { beasts: 1, speed: 0.9 },
+    medium: { beasts: 2, speed: 1.0 },
+    hard: { beasts: 2, speed: 1.15 },
+    daredevil: { beasts: 3, speed: 1.35 },
   };
 
-  const carCache = new Map();
-  function laneTraffic(lane, difficultyId) {
+  const herdCache = new Map();
+  function laneHerd(lane, difficultyId) {
     const key = difficultyId + ':' + lane;
-    if (carCache.has(key)) return carCache.get(key);
-    const mode = TRAFFIC[difficultyId] || TRAFFIC.medium;
+    if (herdCache.has(key)) return herdCache.get(key);
+    const mode = HERD[difficultyId] || HERD.medium;
     const rnd = mulberry32(lane * 2654435761 + 12345);
-    const cars = [];
-    for (let i = 0; i < mode.cars; i++) {
-      cars.push({
+    const beasts = [];
+    for (let i = 0; i < mode.beasts; i++) {
+      beasts.push({
         offset: rnd(),
-        speed: (0.07 + rnd() * 0.09) * mode.speed,
+        speed: (0.06 + rnd() * 0.07) * mode.speed,
         dir: lane % 2 === 0 ? 1 : -1,
-        tone: Art.CAR_TONES[Math.floor(rnd() * Art.CAR_TONES.length)],
-        truck: rnd() > 0.7,
+        species: Art.HERDS[Math.floor(rnd() * Art.HERDS.length)].id,
       });
     }
-    carCache.set(key, cars);
-    return cars;
+    herdCache.set(key, beasts);
+    return beasts;
   }
 
   /* ------------------------------------------------------------- drawing */
 
   const MONO = '"SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace';
   const ACCENT = '#7aa2ff';
+  /* Width of the payout rail down the right edge of the stage. */
+  const TAG_RAIL = 50;
 
   function shortMult(value) {
     if (!isFinite(value)) return '\u2014';
@@ -267,83 +282,92 @@
   }
 
   function paintGround() {
-    const laneW = view.laneW;
-    const count = lanes();
+    const n = lanes();
+    const laneH = view.laneH;
+    // 16 px tiles at a whole scale factor, so the ground stays crisp.
+    const scale = Math.max(2, Math.min(5, Math.round(laneH / 16)));
+    const grass = Art.ground(ctx, 'grass', scale);
+    const dirt = Art.ground(ctx, 'dirt', scale);
 
-    ctx.fillStyle = '#101218';
-    ctx.fillRect(0, 0, view.w, view.h);
-
-    const roadLeft = view.x0 - view.camX;
-    const roadRight = roadLeft + count * laneW;
-
-    for (let i = 0; i < count; i++) {
-      const x = roadLeft + i * laneW;
-      if (x + laneW < -4 || x > view.w + 4) continue;
-      ctx.fillStyle = i % 2 ? '#14161c' : '#171a21';
-      ctx.fillRect(R(x), 0, laneW + 1, view.h);
-    }
-
-    // Kerbs, hatched so they read as pavement rather than more road.
-    const hatched = (from, to) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(from, 0, to - from, view.h);
-      ctx.clip();
-      ctx.fillStyle = '#1b1f27';
-      ctx.fillRect(from, 0, to - from, view.h);
-      ctx.strokeStyle = '#222834';
-      ctx.lineWidth = 1;
-      for (let y = -40; y < view.h + 40; y += 14) {
-        ctx.beginPath();
-        ctx.moveTo(from, y);
-        ctx.lineTo(to, y + 14);
-        ctx.stroke();
-      }
-      ctx.restore();
+    /* Every band is drawn twice: a flat colour, then the pack's texture over it
+       at reduced strength. The tile is a pebble scatter, and at full strength
+       its repeat is loud enough to read as wallpaper rather than as ground. */
+    const band = (fromWorld, toWorld, fallback, fill, alpha) => {
+      const top = sy(fromWorld);
+      const bottom = sy(toWorld);
+      if (bottom < -8 || top > view.h + 8) return;
+      ctx.fillStyle = fallback;
+      ctx.fillRect(0, top, view.w, bottom - top);
+      if (!fill) return;
+      ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+      ctx.fillStyle = fill;
+      ctx.fillRect(0, top, view.w, bottom - top);
+      ctx.globalAlpha = 1;
     };
 
-    if (roadLeft > -40) hatched(roadLeft - laneW * 0.85, roadLeft);
-    if (roadRight < view.w + 40) hatched(roadRight, roadRight + laneW * 1.6);
+    ctx.fillStyle = '#0b0f0d';
+    ctx.fillRect(0, 0, view.w, view.h);
 
-    // Lane dividers, running the way the traffic runs.
-    ctx.setLineDash([12, 17]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#3b4150';
-    for (let i = 1; i < count; i++) {
-      const x = roadLeft + i * laneW;
-      if (x < -6 || x > view.w + 6) continue;
-      ctx.beginPath();
-      ctx.moveTo(R(x) + 0.5, -10);
-      ctx.lineTo(R(x) + 0.5, view.h + 10);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
+    band(-laneH * 1.5, 0, '#20351a', grass, 0.9); // far verge, behind the finish
+    band((n + 1) * laneH, (n + 3) * laneH, '#20351a', grass, 0.9); // near verge
+    band(laneH, (n + 1) * laneH, '#6b4f34', dirt, 0.42); // the track
 
-    // Solid edges of the carriageway.
-    ctx.strokeStyle = '#4a5163';
-    ctx.lineWidth = 2;
-    for (const x of [roadLeft, roadRight]) {
-      if (x < -6 || x > view.w + 6) continue;
-      ctx.beginPath();
-      ctx.moveTo(R(x) + 0.5, 0);
-      ctx.lineTo(R(x) + 0.5, view.h);
-      ctx.stroke();
+    // Alternating bands, so the track reads as lanes rather than as a field.
+    for (let i = 1; i <= n; i++) {
+      if (i % 2) continue;
+      const top = sy(laneTop(i));
+      if (top > view.h || top + laneH < 0) continue;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+      ctx.fillRect(0, top, view.w, laneH);
     }
 
-    // Far kerb: chequered strip, the golden egg, and a lantern at either end.
-    if (roadRight > -laneW && roadRight < view.w + laneW * 2) {
-      const sq = Math.max(8, R(laneW * 0.2));
-      for (let y = 0, row = 0; y < view.h; y += sq, row++) {
-        ctx.fillStyle = row % 2 ? '#e8eaf0' : '#2c313d';
-        ctx.fillRect(R(roadRight + 4), y, sq, sq);
-        ctx.fillStyle = row % 2 ? '#2c313d' : '#e8eaf0';
-        ctx.fillRect(R(roadRight + 4 + sq), y, sq, sq);
+    // Kerb lips: a hard edge, so the track reads as a surface, not a smear.
+    const topEdge = sy(laneH);
+    const bottomEdge = sy((n + 1) * laneH);
+    ctx.fillStyle = 'rgba(9, 10, 14, 0.5)';
+    if (topEdge > -6 && topEdge < view.h + 6) ctx.fillRect(0, topEdge - 3, view.w, 3);
+    if (bottomEdge > -6 && bottomEdge < view.h + 6) ctx.fillRect(0, bottomEdge, view.w, 3);
+
+    // Lane dividers, dashed the way the herds run.
+    ctx.save();
+    ctx.setLineDash([18, 12]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(250, 246, 232, 0.34)';
+    for (let i = 1; i < n; i++) {
+      const y = sy(laneBottom(i)) + 0.5;
+      if (y < -12 || y > view.h + 12) continue;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(view.w, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // The far kerb: a chequered finish strip, with the egg waiting on the verge.
+    const stripY = sy(laneH) - 9;
+    if (stripY > -12 && stripY < view.h + 12) {
+      const sq = 9;
+      for (let x = 0, i = 0; x < view.w; x += sq, i++) {
+        ctx.fillStyle = i % 2 ? '#e8eaf0' : '#2c313d';
+        ctx.fillRect(x, stripY, sq, 8);
       }
-      const eggX = roadRight + laneW * 1.05;
-      const eggY = view.h * 0.5;
-      const r = Math.max(9, laneW * 0.2);
+    }
+
+    // Scrub on both verges, at fixed world positions so it does not crawl.
+    const scrub = Math.max(18, laneH * 0.42);
+    const farBase = sy(0);
+    const nearBase = sy((n + 2) * laneH);
+    for (let x = 24, i = 0; x < view.w; x += 76, i++) {
+      Art.prop(ctx, i % 3 === 0 ? 'flower' : i % 3 === 1 ? 'tuft' : 'rock', x, farBase - 3, scrub);
+      Art.prop(ctx, i % 2 ? 'tuft' : 'rock', x + 38, nearBase, scrub);
+    }
+
+    // The far kerb's prize, drawn only while the top of the world is on screen.
+    const eggY = sy(laneH * 0.5);
+    if (eggY > -laneH && eggY < view.h + laneH) {
+      const r = Math.max(8, laneH * 0.19);
       ctx.save();
-      ctx.translate(R(eggX), R(eggY));
+      ctx.translate(R(view.w * 0.72), R(eggY));
       ctx.fillStyle = '#e8c26a';
       ctx.beginPath();
       ctx.ellipse(0, 0, r * 0.82, r * 1.15, 0, 0, Math.PI * 2);
@@ -354,142 +378,130 @@
       ctx.fill();
       ctx.restore();
     }
-
   }
 
   function paintLanterns(now) {
     if (!Art.hasLantern()) return;
-    const laneW = view.laneW;
-    const roadRight = view.x0 + lanes() * laneW - view.camX;
-    const roadLeft = view.x0 - view.camX;
+    const laneH = view.laneH;
     const frame = Math.floor(now / 180);
-    const size = Math.max(14, laneW * 0.42);
-    const spots = [
-      [roadLeft - laneW * 0.42, view.h * 0.16],
-      [roadLeft - laneW * 0.42, view.h * 0.84],
-      [roadRight + laneW * 1.05, view.h * 0.16],
-      [roadRight + laneW * 1.05, view.h * 0.84],
-    ];
-    for (const spot of spots) {
-      if (spot[0] < -size || spot[0] > view.w + size) continue;
-      Art.lantern(ctx, spot[0], spot[1], size, frame + (spot[1] > view.h * 0.5 ? 2 : 0));
+    const size = Math.max(14, laneH * 0.4);
+    const far = sy(laneH * 0.5);
+    const near = sy((lanes() + 2) * laneH - laneH * 0.5);
+    for (let x = 46; x < view.w; x += 168) {
+      if (far > -size && far < view.h + size) Art.lantern(ctx, x, far, size, frame);
+      if (near > -size && near < view.h + size) Art.lantern(ctx, x + 84, near, size, frame + 2);
     }
   }
 
   function paintTags() {
     const t = state.table;
-    const laneW = view.laneW;
-    const roadLeft = view.x0 - view.camX;
+    const n = lanes();
+    const laneH = view.laneH;
     const crossed = crossedNow();
     const live = t.status === 'live';
     const best = bestFor(t.difficultyId);
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // The lane you are about to step into, tinted end to end.
-    if (live && crossed < lanes()) {
-      const x = roadLeft + crossed * laneW;
+    // The lane you are about to step into, tinted right across the track.
+    if (live && crossed < n) {
       ctx.fillStyle = 'rgba(122, 162, 255, 0.10)';
-      ctx.fillRect(R(x), 0, laneW, view.h);
+      ctx.fillRect(0, sy(laneTop(crossed + 1)), view.w, laneH);
     }
 
-    // A payout gutter along the bottom, drawn over the traffic so a car can
+    // Payout rail down the right edge, painted over the herds so an animal can
     // never hide what a lane pays. This is the one piece of chrome on the stage.
-    const bandTop = view.h - 34;
-    ctx.fillStyle = 'rgba(9, 10, 14, 0.68)';
-    ctx.fillRect(0, bandTop, view.w, 34);
+    ctx.fillStyle = 'rgba(9, 10, 14, 0.66)';
+    ctx.fillRect(view.w - TAG_RAIL, 0, TAG_RAIL, view.h);
     ctx.fillStyle = 'rgba(38, 42, 52, 0.95)';
-    ctx.fillRect(0, bandTop, view.w, 1);
+    ctx.fillRect(view.w - TAG_RAIL, 0, 1, view.h);
 
-    const tagY = bandTop + 17;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
 
-    // Your own best cash-out, marked on the road as a target, never as a tease.
+    for (let i = 1; i <= n; i++) {
+      const mid = sy(laneTop(i) + laneH / 2);
+      if (mid < -14 || mid > view.h + 14) continue;
+      const next = live && i === crossed + 1;
+      const mult = Core.multiplier(t.difficultyId, i);
+
+      ctx.font = '600 ' + (next ? 12 : 10) + 'px ' + MONO;
+      ctx.fillStyle = next ? '#8db0ff' : '#6a7186';
+      ctx.fillText(shortMult(mult) + '\u00d7', view.w - 9, R(mid));
+
+      if (next) {
+        ctx.fillStyle = 'rgba(122, 162, 255, 0.85)';
+        ctx.beginPath();
+        ctx.moveTo(view.w - TAG_RAIL - 10, R(mid) - 5);
+        ctx.lineTo(view.w - TAG_RAIL - 10, R(mid) + 5);
+        ctx.lineTo(view.w - TAG_RAIL - 2, R(mid));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Your own best cash-out, marked as a rule across the track: a target, never
+    // a tease.
     if (best > 0) {
       let bestLane = 0;
-      for (let i = 1; i <= lanes(); i++) {
+      for (let i = 1; i <= n; i++) {
         if (Core.multiplier(t.difficultyId, i) <= best + 0.004) bestLane = i;
       }
       if (bestLane > 0) {
-        const bx = roadLeft + bestLane * laneW;
-        if (bx > -20 && bx < view.w + 20) {
+        const y = sy(laneBottom(bestLane)) + 0.5;
+        if (y > -14 && y < view.h + 14) {
           ctx.save();
-          ctx.strokeStyle = 'rgba(122, 162, 255, 0.3)';
+          ctx.setLineDash([5, 6]);
+          ctx.strokeStyle = 'rgba(122, 162, 255, 0.34)';
           ctx.lineWidth = 1;
-          ctx.setLineDash([4, 5]);
           ctx.beginPath();
-          ctx.moveTo(R(bx) + 0.5, 8);
-          ctx.lineTo(R(bx) + 0.5, bandTop);
+          ctx.moveTo(0, y);
+          ctx.lineTo(view.w - TAG_RAIL, y);
           ctx.stroke();
           ctx.restore();
+          ctx.textAlign = 'left';
           ctx.font = '600 9px ' + MONO;
           ctx.fillStyle = 'rgba(122, 162, 255, 0.8)';
-          ctx.fillText('BEST', R(bx) - 12, 14);
+          ctx.fillText('BEST', 8, R(y) - 7);
         }
       }
     }
 
-    for (let i = 1; i <= lanes(); i++) {
-      const x = roadLeft + (i - 0.5) * laneW;
-      // Keep clear of the mute button in the bottom-right corner.
-      if (x < 22 || x > view.w - 40) continue;
-      const next = live && i === crossed + 1;
-      const mult = Core.multiplier(t.difficultyId, i);
-
-      if (next) {
-        ctx.fillStyle = 'rgba(122, 162, 255, 0.75)';
-        ctx.beginPath();
-        ctx.moveTo(R(x) - 5, bandTop - 12);
-        ctx.lineTo(R(x) + 5, bandTop - 12);
-        ctx.lineTo(R(x), bandTop - 4);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      ctx.font = '600 ' + (next ? 11 : 10) + 'px ' + MONO;
-      ctx.fillStyle = next ? '#8db0ff' : '#565d70';
-      ctx.fillText(shortMult(mult) + '\u00d7', R(x), R(tagY));
-    }
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
   }
 
-  function paintCars(now) {
+  function paintHerd(now) {
     const t = state.table;
-    const laneW = view.laneW;
-    const roadLeft = view.x0 - view.camX;
+    const laneH = view.laneH;
     const seconds = now / 1000;
+    const pad = laneH * 1.6;
+    const size = Math.max(28, R(laneH * 0.94));
 
     for (let lane = 1; lane <= lanes(); lane++) {
-      const x = roadLeft + (lane - 0.5) * laneW;
-      if (x < -laneW || x > view.w + laneW) continue;
-      const cars = laneTraffic(lane, t.difficultyId);
-      for (const car of cars) {
-        const span = view.h + laneW * 3;
-        let travel = (car.offset + seconds * car.speed * car.dir) % 1;
+      const base = sy(laneBottom(lane)) - laneH * 0.1;
+      if (base < -laneH || base - laneH > view.h + laneH) continue;
+      const beasts = laneHerd(lane, t.difficultyId);
+      for (const beast of beasts) {
+        const span = view.w + pad * 2;
+        let travel = (beast.offset + seconds * beast.speed * beast.dir) % 1;
         if (travel < 0) travel += 1;
-        const cy = travel * span - laneW * 1.5;
-        if (cy < -laneW * 2 || cy > view.h + laneW * 2) continue;
-        const length = (car.truck ? 1.25 : 0.92) * laneW;
-        Art.car(ctx, x, cy, laneW * 0.34, length, car.tone, car.dir, car.truck);
+        Art.beast(ctx, beast.species, R(travel * span - pad), base, size, beast.dir);
       }
     }
   }
 
   function paintBird(now) {
-    const laneW = view.laneW;
-    const roadLeft = view.x0 - view.camX;
+    const laneH = view.laneH;
     const crossed = crossedNow();
     const height = birdHeight();
 
-    let x = roadLeft + (crossed - 0.5) * laneW;
-    let y = view.h * 0.52;
+    let x = birdX();
+    let y = sy(feetY(crossed));
     let lift = 0;
     let squashX = 1;
     let squashY = 1;
     let rot = 0;
 
-    if (!reduceMotion()) y += Math.sin(now / 430) * 1.6;
+    if (!reduceMotion()) y += Math.sin(now / 430) * 1.4;
 
     if (view.hop) {
       const hop = view.hop;
@@ -497,25 +509,25 @@
       const crouch = reduceMotion() ? 1 : 60;
       const jump = reduceMotion() ? 1 : 180;
       const land = reduceMotion() ? 0 : 70;
-      const fromX = roadLeft + (hop.from - 0.5) * laneW;
-      const toX = roadLeft + (hop.to - 0.5) * laneW;
+      const fromY = sy(feetY(hop.from));
+      const toY = sy(feetY(hop.to));
 
       if (t < crouch) {
         const c = t / crouch;
         squashY = 1 - 0.2 * c;
         squashX = 1 + 0.16 * c;
-        x = fromX;
+        y = fromY;
       } else if (t < crouch + jump) {
         const k = (t - crouch) / jump;
         const ease = 1 - Math.pow(1 - k, 3);
-        x = fromX + (toX - fromX) * ease;
-        lift = Math.sin(Math.PI * k) * laneW * 0.55;
+        y = fromY + (toY - fromY) * ease;
+        lift = Math.sin(Math.PI * k) * laneH * 0.55;
         const stretch = Math.sin(Math.PI * k);
         squashY = 1 + 0.16 * stretch;
         squashX = 1 - 0.12 * stretch;
       } else {
         const k = Math.min(1, Math.max(0, (t - crouch - jump) / Math.max(1, land)));
-        x = toX;
+        y = toY;
         squashY = 0.8 + 0.2 * k;
         squashX = 1.18 - 0.18 * k;
       }
@@ -525,7 +537,7 @@
       const bust = view.bust;
       const stop = reduceMotion() ? 0 : 70;
       const k = Math.min(1, Math.max(0, (now - bust.start - stop) / 450));
-      const dir = bust.lane % 2 === 0 ? 1 : -1;
+      const dir = bust.dir || 1;
       x += Math.sin(k * Math.PI) * 24 * dir;
       y -= Math.sin(k * Math.PI) * 18;
       lift += k * 6;
@@ -534,8 +546,8 @@
       squashY = 1 - k * 0.14;
     }
 
-    // A shadow that stays on the asphalt while the bird is in the air.
-    const shadeW = Math.max(6, R(height * (0.46 - Math.min(0.22, lift / (view.laneW * 3)))));
+    // A shadow that stays on the ground while the bird is in the air.
+    const shadeW = Math.max(6, R(height * (0.46 - Math.min(0.22, lift / (laneH * 3)))));
     ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
     ctx.fillRect(R(x - shadeW / 2), R(y + 2), shadeW, 2);
 
@@ -546,16 +558,15 @@
     });
   }
 
-  function paintBustCar(now) {
+  function paintBustBeast(now) {
     if (!view.bust) return;
     const stop = reduceMotion() ? 0 : 70;
     const k = Math.min(1, Math.max(0, (now - view.bust.start - stop) / 300));
-    const laneW = view.laneW;
-    const roadLeft = view.x0 - view.camX;
-    const dir = view.bust.lane % 2 === 0 ? 1 : -1;
-    const x = roadLeft + (view.bust.lane - 0.5) * laneW;
-    const y = view.h * 0.52 + (dir > 0 ? -1 : 1) * (1 - k) * laneW * 2.6;
-    Art.car(ctx, x, y, laneW * 0.44, laneW * 1.05, '#3a4054', dir, false);
+    const laneH = view.laneH;
+    const dir = view.bust.dir || 1;
+    const base = sy(laneBottom(Math.min(view.bust.lane, lanes()))) - laneH * 0.1;
+    const x = birdX() - dir * (1 - k) * view.w * 0.6;
+    Art.beast(ctx, view.bust.species || 'cow', x, base, laneH * 1.05, dir);
   }
 
   function paintParticles() {
@@ -576,10 +587,10 @@
     ctx.clearRect(-8, -8, view.w + 16, view.h + 16);
     paintGround();
     paintLanterns(now);
-    paintCars(now);
+    paintHerd(now);
     paintTags();
     paintBird(now);
-    paintBustCar(now);
+    paintBustBeast(now);
     paintParticles();
     if (view.flash > 0.01) {
       ctx.fillStyle = 'rgba(224, 87, 77, ' + (view.flash * 0.3).toFixed(3) + ')';
@@ -591,9 +602,8 @@
 
   function spawnDust(lane) {
     if (reduceMotion()) return;
-    const laneW = view.laneW;
-    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
-    const y = view.h * 0.52;
+    const x = birdX();
+    const y = sy(feetY(lane));
     for (let i = 0; i < 4; i++) {
       view.feathers.push({
         x: x + (i - 1.5) * 6,
@@ -610,9 +620,8 @@
   }
 
   function spawnFeathers(lane) {
-    const laneW = view.laneW;
-    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
-    const y = view.h * 0.52;
+    const x = birdX();
+    const y = sy(feetY(lane)) - birdHeight() * 0.45;
     for (let i = 0; i < 14; i++) {
       view.feathers.push({
         x: x + (Math.random() - 0.5) * 14,
@@ -629,9 +638,9 @@
   }
 
   function spawnCoins(lane, big) {
-    const laneW = view.laneW;
-    const x = view.x0 + (lane - 0.5) * laneW - view.camX;
-    const y = view.h * 0.52 - birdHeight() * 0.6;
+    const laneW = view.laneH;
+    const x = birdX();
+    const y = sy(feetY(lane)) - birdHeight() * 0.6;
     const count = big ? 12 : 7;
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
@@ -650,9 +659,9 @@
   }
 
   function update(dt, now) {
-    const target = clampCam(probe(crossedNow()) - view.w * 0.34);
+    const target = clampCam(feetY(crossedNow()) - view.h * 0.74);
     view.camTarget = target;
-    view.camX += (target - view.camX) * Math.min(1, dt / 110);
+    view.camY += (target - view.camY) * Math.min(1, dt / 110);
 
     if (view.hop) {
       const hop = view.hop;
@@ -932,8 +941,8 @@
     if (t.round) {
       const reveal = t.reveal();
       els.factRoad.textContent = reveal.hazardLanes.length
-        ? 'cars in lanes ' + reveal.hazardLanes.join(', ')
-        : 'no cars at all';
+        ? 'loose in lanes ' + reveal.hazardLanes.join(', ')
+        : 'nothing loose at all';
       els.factRoad.title = 'Rebuild with ' + reveal.material;
     } else {
       els.factRoad.textContent = 'no round yet';
@@ -976,8 +985,8 @@
     const t = state.table;
     const reveal = res.revealed || t.reveal() || { hazardLanes: [] };
     const cars = reveal.hazardLanes.length
-      ? 'Cars this road: lane ' + reveal.hazardLanes.join(', ') + '.'
-      : 'That road had no car at all.';
+      ? 'Loose this road: lane ' + reveal.hazardLanes.join(', ') + '.'
+      : 'That road had nothing loose in it.';
     const best = bestFor(t.difficultyId);
     let isBest = false;
 
@@ -1005,7 +1014,12 @@
       isBest = recordBest(t.difficultyId, res.multiplier);
       els.rKicker.textContent = 'Cashed out';
       els.rMult.textContent = Core.formatMultiplier(res.multiplier) + '\u00d7';
-      els.rLine.textContent = '+' + Core.formatPoints(res.payout - t.round.bet) + ' points';
+      const net = res.payout - t.round.bet;
+      // A first lane on Easy pays exactly the stake back. Saying "+0 points"
+      // reads like a bug; say what actually happened.
+      els.rLine.textContent = net > 0
+        ? '+' + Core.formatPoints(net) + ' points'
+        : 'Stake back, nothing won';
       els.rNext.textContent = isBest
         ? 'New best cash-out on this road.'
         : best
@@ -1070,7 +1084,14 @@
       state.roundsThisSession += 1;
       view.flash = 1;
       view.trauma = Math.min(1, view.trauma + 0.62);
-      view.bust = { lane: res.crossed, start: performance.now() };
+      const herd = laneHerd(res.crossed, t.difficultyId);
+      const culprit = herd[0] || { species: 'cow', dir: 1 };
+      view.bust = {
+        lane: res.crossed,
+        start: performance.now(),
+        species: culprit.species,
+        dir: culprit.dir,
+      };
       spawnFeathers(res.crossed);
       sfx('bust');
       scheduleResult(res, 'bust', reduceMotion() ? 0 : 700);
@@ -1141,7 +1162,7 @@
     if (!button) return;
     if (state.table.status === 'live') return;
     state.table.setDifficulty(button.dataset.road);
-    carCache.clear();
+    herdCache.clear();
     resize();
     render();
     writeStore();
@@ -1159,7 +1180,7 @@
     const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
     const nextId = ids[(at + step + ids.length) % ids.length];
     state.table.setDifficulty(nextId);
-    carCache.clear();
+    herdCache.clear();
     resize();
     render();
     writeStore();
@@ -1244,7 +1265,7 @@
     },
     setRoad: function (id) {
       state.table.setDifficulty(id);
-      carCache.clear();
+      herdCache.clear();
       resize();
       render();
     },

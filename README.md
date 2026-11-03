@@ -22,7 +22,7 @@ also runs in Node.js so its rules are covered by tests.
 | [wave function collapse](wave%20function%20collapse) | A tilemap generator that grows maps from edge constraints alone, with backtracking. |
 | [2048](2048) | The sliding-tile puzzle, with custom blocks (divide, add, multiply — each with its own spawn rarity), a milestone ladder derived from the blocks in play, and an expectimax AI you can watch solve the board. |
 | [RobloxGame](RobloxGame) | A design kit, not code: three master prompts and the research behind them for building an original Roblox steal-and-collect game. |
-| [chicken lane](chicken%20lane) | A free, points-only road-crossing multiplier game: cross up to 24 lanes of night traffic, cash out before a car finds you, with the whole 96% odds table printed in the rail and every round reproducible from its seed. |
+| [chicken lane](chicken%20lane) | A free, points-only road-crossing multiplier game: climb a side-on farm track of up to 24 lanes past wandering herds, cash out before one of them finds you, with the whole 96% odds table printed in the rail and every round reproducible from its seed. |
 | [Wiekentwie](Wiekentwie) | A Dutch Excel/VBA app ("Wie kent wie?") for offering and searching contacts. |
 
 ## Running anything
