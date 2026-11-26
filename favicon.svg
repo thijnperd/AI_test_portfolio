@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #e4e6e1; stroke: rgba(18, 22, 20, 0.22); }
+    .fg { fill: #121614; }
+    .dot { fill: #a93724; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0a0d10; stroke: rgba(233, 234, 228, 0.22); }
+      .fg { fill: #e9eae4; }
+      .dot { fill: #f07443; }
+    }
+  </style>
+  <rect class="bg" x="0.75" y="0.75" width="30.5" height="30.5" rx="6" stroke-width="1.5" />
+  <rect class="fg" x="6.5" y="7" width="16.5" height="3.2" rx="0.5" />
+  <rect class="fg" x="13.1" y="7" width="3.3" height="17.5" rx="0.5" />
+  <circle class="dot" cx="23.2" cy="22.1" r="2.7" />
+  <rect class="fg" x="6.5" y="21.8" width="2.2" height="2.2" opacity=".48" />
+  <rect class="fg" x="9.3" y="21.8" width="2.2" height="2.2" opacity=".24" />
+  <rect class="fg" x="6.5" y="19" width="2.2" height="2.2" opacity=".24" />
+</svg>

@@ -1,5 +1,7 @@
 # Coding_etc — self-contained coding projects
 
+**Live index:** https://thijnperd.github.io/coding-etc/
+
 A collection of independent coding projects by **Thijn Köhne**. Each one is
 deliberately self-contained: plain HTML, CSS and JavaScript with **no build
 step, no bundler and no dependencies**. Open a project's `index.html` in a
@@ -70,3 +72,5 @@ exits non-zero on any failure:
 ```bash
 bash tools/check.sh "boids/index.html" --expect canvas --screenshot /tmp/boids.png
 ```
+
+More tools at [thijnperd.github.io](https://thijnperd.github.io/).

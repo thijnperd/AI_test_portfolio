@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coding_etc — Browser Experiments</title>
+  <meta name="description" content="Self-contained, dependency-free browser simulations, games, and generative art in plain HTML, CSS, and JavaScript by Thijn Köhne." />
+  <link rel="canonical" href="https://thijnperd.github.io/coding-etc/" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Coding_etc — Browser Experiments" />
+  <meta property="og:description" content="Twelve self-contained browser simulations, games, and generative art experiments with zero dependencies." />
+  <meta property="og:url" content="https://thijnperd.github.io/coding-etc/" />
+  <style>
+    :root {
+      --bg: #0e0f13;
+      --panel: #15171d;
+      --panel-2: #1b1e26;
+      --line: #262a34;
+      --text: #e8eaf0;
+      --muted: #8b91a3;
+      --accent: #7aa2ff;
+      --radius: 8px;
+      --font: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: clamp(28px, 5vw, 56px) clamp(16px, 4vw, 32px);
+    }
+
+    header {
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+    }
+
+    .kicker {
+      margin: 0 0 8px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(22px, 3.2vw, 30px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    h1 span { color: var(--accent); }
+
+    .intro {
+      margin: 0;
+      max-width: 66ch;
+      color: var(--muted);
+    }
+
+    .statusbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      margin-top: 18px;
+      padding: 10px 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .statusbar b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .section-label {
+      margin: 0 0 12px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: minmax(210px, 240px) minmax(0, 1fr) auto;
+      align-items: baseline;
+      gap: 8px 20px;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .item__title {
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .item__title:hover { color: var(--accent); }
+
+    .item__desc {
+      color: var(--muted);
+      min-width: 0;
+    }
+
+    .item__actions {
+      display: flex;
+      gap: 12px;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .btn-link {
+      padding: 3px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+    }
+
+    .btn-link:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--panel-2);
+    }
+
+    .btn-link--muted {
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .other {
+      margin-top: 32px;
+    }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px 20px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: var(--text);
+      text-decoration: none;
+      border-bottom: 1px solid var(--line);
+    }
+
+    footer a:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    @media (max-width: 720px) {
+      .item {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .item__actions {
+        margin-top: 2px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .btn-link { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="kicker">Terminal Gallery · Plain HTML/CSS/JS</p>
+      <h1>Coding<span>_etc</span></h1>
+      <p class="intro">
+        Self-contained browser experiments with no build step, no bundler, and no runtime dependencies.
+      </p>
+      <div class="statusbar">
+        <span>Browser apps <b>12</b></span>
+        <span>Other projects <b>2</b></span>
+        <span>Dependencies <b>0</b></span>
+      </div>
+    </header>
+
+    <main>
+      <p class="section-label">Launch in browser</p>
+      <ul class="list">
+        <li class="item">
+          <a class="item__title" href="./dither%20studio%20web/">dither studio web</a>
+          <span class="item__desc">Pixel and video dithering studio with 46 algorithms, 24 palettes, effects stack, text mode, and WebM recording.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./dither%20studio%20web/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/dither%20studio%20web">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./algorithmic%20art/">algorithmic art</a>
+          <span class="item__desc">Seeded generative-art sketches with deterministic replay and PNG export.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./algorithmic%20art/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/algorithmic%20art">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./analog%20horror%20raycaster/">analog horror raycaster</a>
+          <span class="item__desc">Static Halls: first-person raycasting horror game with procedural fog, a stalking presence, and two endings.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./analog%20horror%20raycaster/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/analog%20horror%20raycaster">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./boids/">boids</a>
+          <span class="item__desc">Reynolds flocking simulation driven by three adjustable steering rules.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./boids/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/boids">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./falling%20sand/">falling sand</a>
+          <span class="item__desc">Cellular particle sandbox with gravity, density, hydrostatic pressure, and wet-sand repose.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./falling%20sand/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/falling%20sand">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./fluid%20dynamics/">fluid dynamics</a>
+          <span class="item__desc">Incompressible Navier-Stokes (Stable Fluids) with dye, vorticity confinement, and buoyancy.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./fluid%20dynamics/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/fluid%20dynamics">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./game%20of%20life/">game of life</a>
+          <span class="item__desc">Interactive Conway's Game of Life with pattern controls.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./game%20of%20life/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/game%20of%20life">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./logic%20puzzles/">logic puzzles</a>
+          <span class="item__desc">Sudoku and Binairo generated with unique solutions and step-by-step deduction hints.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./logic%20puzzles/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/logic%20puzzles">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./maze%20generator%20and%20solver/">maze generator and solver</a>
+          <span class="item__desc">Animated maze generation and pathfinding algorithms.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./maze%20generator%20and%20solver/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/maze%20generator%20and%20solver">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./wave%20function%20collapse/">wave function collapse</a>
+          <span class="item__desc">Tilemap generator built from edge constraints with backtracking.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./wave%20function%20collapse/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/wave%20function%20collapse">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./2048/">2048</a>
+          <span class="item__desc">Sliding-tile puzzle with custom blocks, milestone ladder, and expectimax AI.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./2048/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/2048">Source</a>
+          </span>
+        </li>
+        <li class="item">
+          <a class="item__title" href="./chicken%20lane/">chicken lane</a>
+          <span class="item__desc">Seeded road-crossing multiplier game with full odds table and no real money.</span>
+          <span class="item__actions">
+            <a class="btn-link" href="./chicken%20lane/">Open ↗</a>
+            <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/chicken%20lane">Source</a>
+          </span>
+        </li>
+      </ul>
+
+      <section class="other" aria-labelledby="other-title">
+        <p class="section-label" id="other-title">Non-browser folders</p>
+        <ul class="list">
+          <li class="item">
+            <a class="item__title" href="https://github.com/thijnperd/coding-etc/tree/main/Wiekentwie">Wiekentwie</a>
+            <span class="item__desc">Dutch Excel/VBA contact directory ("Wie kent wie?").</span>
+            <span class="item__actions">
+              <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/Wiekentwie">GitHub ↗</a>
+            </span>
+          </li>
+          <li class="item">
+            <a class="item__title" href="https://github.com/thijnperd/coding-etc/tree/main/RobloxGame">RobloxGame</a>
+            <span class="item__desc">Design prompts and notes for a Roblox steal-and-collect game.</span>
+            <span class="item__actions">
+              <a class="btn-link btn-link--muted" href="https://github.com/thijnperd/coding-etc/tree/main/RobloxGame">GitHub ↗</a>
+            </span>
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <span>Made by <a href="https://thijnperd.github.io/" target="_blank" rel="noopener noreferrer">Thijn Köhne</a> · <a href="https://thijnperd.github.io/" target="_blank" rel="noopener noreferrer">Portfolio ↗</a> · <a href="https://github.com/thijnperd" target="_blank" rel="noopener noreferrer">GitHub ↗</a></span>
+      <span><a href="https://github.com/thijnperd/coding-etc" target="_blank" rel="noopener noreferrer">Repository ↗</a></span>
+    </footer>
+  </div>
+</body>
+</html>
